@@ -22,7 +22,7 @@ def cors_headers():
         "Access-Control-Allow-Headers": "Content-Type, Authorization",
     }
 
-@app.post("/api/summarize")
+@app.post("/")
 async def summarize_repo(info: RepoInfo, request: Request):
     # ...summarization logic...
     summary_prompt = (
@@ -69,6 +69,6 @@ async def summarize_repo(info: RepoInfo, request: Request):
         headers=cors_headers()
     )
 
-@app.options("/api/summarize")
+@app.options("/")
 async def options_handler(request: Request):
     return JSONResponse(content={}, headers=cors_headers())

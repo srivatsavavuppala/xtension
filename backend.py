@@ -5,7 +5,7 @@ import os
 import requests
 
 # You can set your API URL here (pointing to the ai backend)
-AI_BACKEND_URL = "http://localhost:5000/summarize"
+AI_BACKEND_URL = "https://xtension-alpha.vercel.app/api/summarize"
 
 app = FastAPI()
 

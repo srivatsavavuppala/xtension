@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             try {
               // Call the backend API
-              const response = await fetch('http://localhost:8000/summarize', {
+              const response = await fetch('https://xtension-alpha.vercel.app/api/summarize', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',

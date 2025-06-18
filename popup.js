@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             try {
               // Call the backend API
-              const response = await fetch('https://xtension-alpha.vercel.app/api/summarize', {
+              const response = await fetch('https://xtension-git-main-srivatsavavuppalas-projects.vercel.app/api/index', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',

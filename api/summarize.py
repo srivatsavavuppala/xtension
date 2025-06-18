@@ -19,12 +19,18 @@ class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             # Read the request body
-            content_length = int(self.headers['Content-Length'])
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length == 0:
+                raise ValueError("No data received")
+                
             post_data = self.rfile.read(content_length)
             data = json.loads(post_data.decode('utf-8'))
             
             # Initialize Groq client
             GROQ_API_KEY = os.environ.get("API_KEY")
+            if not GROQ_API_KEY:
+                raise ValueError("API_KEY environment variable not set")
+                
             client = Groq(api_key=GROQ_API_KEY)
             
             # Extract repo info
@@ -32,6 +38,9 @@ class handler(BaseHTTPRequestHandler):
             owner = data.get('owner', '')
             description = data.get('description', '')
             readme = data.get('readme', '')
+            
+            if not repo or not owner:
+                raise ValueError("Missing required fields: repo and owner")
             
             # Generate summary
             summary_prompt = (
@@ -42,6 +51,7 @@ class handler(BaseHTTPRequestHandler):
                 f"Description: {description}\n"
                 f"README: {readme[:2000]}"
             )
+            
             summary_completion = client.chat.completions.create(
                 messages=[{"role": "user", "content": summary_prompt}],
                 model="llama-3.3-70b-versatile",
@@ -67,6 +77,7 @@ class handler(BaseHTTPRequestHandler):
                 f"Description: {description}\n"
                 f"README: {readme[:4000]}"
             )
+            
             paper_completion = client.chat.completions.create(
                 messages=[{"role": "user", "content": paper_prompt}],
                 model="llama-3.3-70b-versatile",
@@ -87,9 +98,21 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(response).encode('utf-8'))
             
         except Exception as e:
+            error_message = f"Error: {str(e)}"
+            print(f"Function error: {error_message}")  # This will show in Vercel logs
+            
             self.send_response(500)
             self.send_header('Content-Type', 'application/json')
             self._set_cors_headers()
             self.end_headers()
-            error_response = {"error": str(e)}
+            error_response = {"error": error_message}
             self.wfile.write(json.dumps(error_response).encode('utf-8'))
+    
+    def do_GET(self):
+        # Add a simple GET endpoint for testing
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self._set_cors_headers()
+        self.end_headers()
+        response = {"message": "Summarize API is working", "method": "POST"}
+        self.wfile.write(json.dumps(response).encode('utf-8'))

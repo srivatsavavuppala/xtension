@@ -1,76 +1,74 @@
-from http.server import BaseHTTPRequestHandler
-import json
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 import os
-from urllib.parse import urlparse, parse_qs
+from groq import Groq
 
-class handler(BaseHTTPRequestHandler):
-    def _set_cors_headers(self):
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-    
-    def do_OPTIONS(self):
-        self.send_response(200)
-        self._set_cors_headers()
-        self.end_headers()
-    
-    def do_GET(self):
-        # Parse the URL to check the path
-        parsed_path = urlparse(self.path)
-        
-        if parsed_path.path == '/summarize' or parsed_path.path == '/':
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self._set_cors_headers()
-            self.end_headers()
-            
-            response = {"message": "Summarize API is working", "method": "POST required"}
-            self.wfile.write(json.dumps(response).encode('utf-8'))
-        else:
-            self.send_response(404)
-            self.send_header('Content-Type', 'application/json')
-            self._set_cors_headers()
-            self.end_headers()
-            
-            response = {"error": "Not found"}
-            self.wfile.write(json.dumps(response).encode('utf-8'))
-    
-    def do_POST(self):
-        try:
-            # Only process summarize requests
-            parsed_path = urlparse(self.path)
-            if parsed_path.path not in ['/summarize', '/']:
-                self.send_response(404)
-                self.send_header('Content-Type', 'application/json')
-                self._set_cors_headers()
-                self.end_headers()
-                self.wfile.write(json.dumps({"error": "Endpoint not found"}).encode('utf-8'))
-                return
-            
-            # Your existing summarize logic here
-            content_length = int(self.headers.get('Content-Length', 0))
-            if content_length == 0:
-                raise ValueError("No data received")
-                
-            post_data = self.rfile.read(content_length)
-            data = json.loads(post_data.decode('utf-8'))
-            
-            # For now, return a test response
-            response = {
-                "summary": f"Test summary for {data.get('owner', '')}/{data.get('repo', '')}",
-                "project_paper": f"Test project paper for the repository"
-            }
-            
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self._set_cors_headers()
-            self.end_headers()
-            self.wfile.write(json.dumps(response).encode('utf-8'))
-            
-        except Exception as e:
-            self.send_response(500)
-            self.send_header('Content-Type', 'application/json')
-            self._set_cors_headers()
-            self.end_headers()
-            error_response = {"error": str(e)}
-            self.wfile.write(json.dumps(error_response).encode('utf-8'))
+app = FastAPI()
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins for browser extensions
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+class RepoInfo(BaseModel):
+    repo: str
+    owner: str
+    description: str
+    readme: str = ""
+
+GROQ_API_KEY = os.environ.get("API_KEY")
+client = Groq(api_key=GROQ_API_KEY)
+
+@app.post("/api/summarize")
+async def summarize_repo(info: RepoInfo):
+    summary_prompt = (
+        f"Summarize the following GitHub repository in a concise paragraph. "
+        f"Focus only on the project's purpose, main features, and how it is organized. "
+        f"Ignore any information about funding, badges, external links, or unrelated content.\n\n"
+        f"Repository: {info.owner}/{info.repo}\n"
+        f"Description: {info.description}\n"
+        f"README: {info.readme[:2000]}"
+    )
+    summary_completion = client.chat.completions.create(
+        messages=[{"role": "user", "content": summary_prompt}],
+        model="llama-3.3-70b-versatile",
+        stream=False,
+    )
+    summary = summary_completion.choices[0].message.content
+
+    paper_prompt = (
+        f"Write a one-page project overview for the following GitHub repository. "
+        f"Include only the following sections:\n"
+        f"- Project Name\n"
+        f"- Purpose\n"
+        f"- Main Features\n"
+        f"- File/Folder Structure (if available)\n"
+        f"- Key Technologies Used\n"
+        f"- How to Use or Run the Project\n"
+        f"- Contribution Guidelines (if available)\n"
+        f"- License\n"
+        f"Do not include information about funding, badges, external links, or unrelated content. "
+        f"Be clear, concise, and professional.\n\n"
+        f"Repository: {info.owner}/{info.repo}\n"
+        f"Description: {info.description}\n"
+        f"README: {info.readme[:4000]}"
+    )
+    paper_completion = client.chat.completions.create(
+        messages=[{"role": "user", "content": paper_prompt}],
+        model="llama-3.3-70b-versatile",
+        stream=False,
+    )
+    project_paper = paper_completion.choices[0].message.content
+
+    return {"summary": summary, "project_paper": project_paper}
+
+# Handle preflight OPTIONS requests
+@app.options("/api/summarize")
+async def options_handler():
+    return JSONResponse(content={}, status_code=200)

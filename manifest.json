@@ -2,23 +2,24 @@
   "manifest_version": 3,
   "name": "GitHub Repo Summarizer",
   "version": "1.0",
-  "description": "Summarizes GitHub repositories and generates a 1-pager project paper.",
+  "description": "AI-powered GitHub repository summarizer that generates concise overviews and project documentation.",
   "permissions": ["scripting", "activeTab", "storage"],
-  "host_permissions": [
-    "https://github.com/*",
-    "https://xtension-alpha.vercel.app/*",
-    "https://api.github.com/*"
-  ],
+  "host_permissions": ["https://github.com/*"],
   "background": {
     "service_worker": "background.js"
   },
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
-      "16": "icon16.png",
-      "48": "icon48.png",
-      "128": "icon128.png"
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
     }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
   },
   "content_scripts": [
     {

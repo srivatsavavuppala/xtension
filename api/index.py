@@ -1,15 +1,17 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
+import json
 from groq import Groq
 
+# Initialize FastAPI app
 app = FastAPI()
 
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for chrome extensions
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -21,8 +23,16 @@ class RepoInfo(BaseModel):
     description: str
     readme: str = ""
 
+# Initialize Groq client
 GROQ_API_KEY = os.environ.get("API_KEY")
+if not GROQ_API_KEY:
+    raise ValueError("API_KEY environment variable is required")
+
 client = Groq(api_key=GROQ_API_KEY)
+
+def handler(request):
+    """Main handler for Vercel serverless function"""
+    return app(request)
 
 @app.post("/")
 async def summarize_repo(info: RepoInfo):
@@ -73,10 +83,6 @@ async def summarize_repo(info: RepoInfo):
     except Exception as e:
         return {"error": f"Failed to generate summary: {str(e)}"}
 
-# Health check endpoint
 @app.get("/")
 async def health_check():
-    return {"status": "API is running"}
-@app.post("/index")
-async def summarize_repo_alt(info: RepoInfo):
-    return await summarize_repo(info)
+    return {"status": "GitHub Repo Summarizer API is running", "version": "1.0"}

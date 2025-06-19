@@ -1,60 +1,60 @@
 # GitHub Repository Summarizer Chrome Extension 🚀
 
-A professional Chrome/Edge extension that provides instant, AI-powered summaries and documentation for any GitHub repository. Get a concise overview and a detailed project paper with just one click.
+A professional Chrome/Edge extension that provides instant, AI-powered summaries and documentation for any GitHub repository. Get a concise overview and a detailed project report with just one click.
 
 ## 🌟 Features
 
-- **Instant Repository Summary**: Get a clear, focused summary of any GitHub repository
-- **One-Page Project Documentation**: Generate comprehensive project documentation automatically
-- **AI-Powered Analysis**: Utilizes Groq's LLM for intelligent content generation
-- **Clean & Modern UI**: Intuitive interface with a professional design
-- **Cross-Browser Support**: Works on Chrome and Edge
+- **Instant Repository Summary**: Get a clear, focused summary of any GitHub repository  
+- **One-Page Project Documentation**: Automatically generate comprehensive documentation  
+- **AI-Powered Analysis**: Uses Groq's LLM for intelligent content generation  
+- **Clean & Modern UI**: Intuitive interface with a professional design  
+- **Cross-Browser Support**: Works seamlessly on Chrome and Edge  
 
 ## 🛠️ Technical Architecture
 
 ### Frontend (Chrome Extension)
 ```
 chrome-extension/
-├── manifest.json      # Extension configuration
-├── popup.html        # Extension popup interface
-├── popup.js         # UI logic and API communication
-├── content.js       # GitHub page interaction
-├── background.js    # Service worker (future use)
-└── styles.css       # Modern UI styling
+├── manifest.json     # Extension configuration
+├── popup.html        # Popup interface
+├── popup.js          # UI logic and API communication
+├── content.js        # GitHub page interaction
+├── background.js     # Service worker (future use)
+└── styles.css        # Modern UI styling
 ```
 
 ### Backend (Vercel Serverless)
 ```
 api/
-└── index.py         # FastAPI serverless endpoint
+└── index.py          # FastAPI serverless endpoint
 ```
 
 ## 🔧 Technology Stack
 
 - **Frontend:**
-  - Vanilla JavaScript
-  - Chrome Extensions API
-  - Modern CSS3
+  - Vanilla JavaScript  
+  - Chrome Extensions API  
+  - Modern CSS3  
 
 - **Backend:**
-  - Python 3.12+
-  - FastAPI
-  - Groq AI API
-  - Vercel Serverless Functions
+  - Python 3.12+  
+  - FastAPI  
+  - Groq AI API  
+  - Vercel Serverless Functions  
 
 ## 📦 Installation
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/yourusername/github-repo-summarizer.git
+   git clone https://github.com/srivatsavavuppala/xtension.git
    ```
 
 2. **Load the extension:**
-   - Open Chrome/Edge
-   - Go to Extensions (chrome://extensions/)
-   - Enable Developer Mode
-   - Click "Load unpacked"
-   - Select the `x-tension` folder
+   - Open Chrome/Edge  
+   - Go to Extensions (`chrome://extensions/`)  
+   - Enable **Developer Mode**  
+   - Click **"Load unpacked"**  
+   - Select the `xtension` folder  
 
 3. **Backend setup (for development):**
    ```bash
@@ -66,66 +66,66 @@ api/
 ## 🚀 Deployment
 
 ### Frontend (Chrome Web Store)
-- Package the extension
-- Submit to Chrome Web Store
-- Pending review and publication
+- Package the extension  
+- Submit to the Chrome Web Store  
+- Await review and publication  
 
 ### Backend (Vercel)
-- Already deployed at: `https://xtension-git-main-srivatsavavuppalas-projects.vercel.app/api/index`
-- Automatically deploys from main branch
-- Environment variables managed in Vercel dashboard
+- Already deployed at: `https://xtension-git-main-srivatsavavuppalas-projects.vercel.app/api/index`  
+- Automatically deploys from the main branch  
+- Environment variables managed via the Vercel dashboard  
 
 ## 🔑 Environment Variables
 
 Required environment variables in Vercel:
-- `API_KEY`: Your Groq API key
+- `API_KEY`: Your Groq API key  
 
 ## 🎯 Usage
 
-1. Visit any GitHub repository
-2. Click the extension icon
-3. Click "Summarize This Repo"
-4. View the instant summary
-5. Download the detailed project paper
+1. Visit any GitHub repository  
+2. Click the extension icon  
+3. Click **"Summarize This Repo"**  
+4. View the instant summary  
+5. Download the detailed project paper  
 
 ## 🛡️ Security
 
-- API keys stored securely in Vercel
-- CORS protection implemented
-- No sensitive data stored locally
-- Secure communication with Groq API
+- API keys stored securely in Vercel  
+- CORS protection implemented  
+- No sensitive data stored locally  
+- Secure communication with Groq API  
 
 ## ⚡ Performance
 
-- Instant UI feedback
-- Efficient API calls
-- Minimal resource usage
-- Optimized content processing
+- Instant UI feedback  
+- Efficient API calls  
+- Minimal resource usage  
+- Optimized content processing  
 
 ## 🔜 Future Enhancements
 
-- Dark mode support
-- Custom summarization options
-- Batch repository analysis
-- Export in multiple formats
-- Repository comparison feature
+- Dark mode support  
+- Custom summarization options  
+- Batch repository analysis  
+- Export in multiple formats  
+- Repository comparison feature  
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create your feature branch
+1. Fork the repository  
+2. Create your feature branch:
    ```bash
    git checkout -b feature/amazing-feature
    ```
-3. Commit your changes
+3. Commit your changes:
    ```bash
    git commit -m 'Add amazing feature'
    ```
-4. Push to the branch
+4. Push to the branch:
    ```bash
    git push origin feature/amazing-feature
    ```
-5. Open a Pull Request
+5. Open a Pull Request  
 
 ## 📝 License
 
@@ -133,14 +133,14 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 👥 Authors
 
-- Srivatsava Vuppala - *Initial work* - [Your GitHub Profile](https://github.com/srivatsavavuppala)
+- [Srivatsava Vuppala](https://github.com/srivatsavavuppala)
 
 ## 🙏 Acknowledgments
 
-- Groq API for AI capabilities
-- FastAPI for efficient backend
-- Vercel for serverless hosting
-- GitHub for inspiration
+- Groq API for AI capabilities  
+- FastAPI for efficient backend  
+- Vercel for serverless hosting  
+- GitHub for inspiration  
 
 ---
 

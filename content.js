@@ -1,7 +1,7 @@
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'extractRepoInfo') {
     try {
-      // Try multiple selectors for repo name and owner
+      // Extract basic repo info
       let repoName = '';
       let owner = '';
       let description = '';
@@ -34,12 +34,34 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         })
         .then(response => response.ok ? response.text() : '')
         .then(readme => {
-          sendResponse({repo: repoName, owner, description, readme});
+          // Then fetch the repository structure
+          return fetch(`https://api.github.com/repos/${owner}/${repoName}/git/trees/master?recursive=1`)
+            .then(response => response.json())
+            .then(data => {
+              // Filter and organize file structure
+              const files = data.tree
+                .filter(item => !item.path.includes('node_modules/') && !item.path.includes('.git/'))
+                .map(item => ({
+                  path: item.path,
+                  type: item.type, // 'blob' for files, 'tree' for directories
+                  size: item.size
+                }));
+
+              // Send all information back
+              sendResponse({
+                repo: repoName,
+                owner,
+                description,
+                readme,
+                structure: files
+              });
+            });
         });
       } else {
         sendResponse(null);
       }
     } catch (e) {
+      console.error('Error extracting repo info:', e);
       sendResponse(null);
     }
     return true; // Keep the message channel open for async response

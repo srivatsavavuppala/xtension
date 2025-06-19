@@ -1,7 +1,25 @@
 from http.server import BaseHTTPRequestHandler
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from typing import List, Optional
 import json
 import os
 from groq import Groq
+
+app = FastAPI()
+
+class FileInfo(BaseModel):
+    path: str
+    type: str
+    size: Optional[int]
+
+class RepoInfo(BaseModel):
+    repo: str
+    owner: str
+    description: str
+    readme: str = ""
+    structure: List[FileInfo] = []
 
 class handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
@@ -54,13 +72,20 @@ class handler(BaseHTTPRequestHandler):
             
             client = Groq(api_key=api_key)
             
+            # Create a formatted file structure string
+            structure_text = "Repository Structure:\n"
+            for file in data.get('structure', []):
+                prefix = "📁 " if file['type'] == "tree" else "📄 "
+                structure_text += f"{prefix}{file['path']}\n"
+
             # Generate summary
             summary_prompt = (
                 f"Summarize the following GitHub repository in a concise paragraph. "
-                f"Focus only on the project's purpose, main features, and how it is organized. "
-                f"Ignore any information about funding, badges, external links, or unrelated content.\n\n"
+                f"Focus on the project's purpose, main features, and organization. "
+                f"Consider both the README content and the file structure.\n\n"
                 f"Repository: {data['owner']}/{data['repo']}\n"
-                f"Description: {data['description']}\n"
+                f"Description: {data['description']}\n\n"
+                f"File Structure:\n{structure_text}\n\n"
                 f"README: {data.get('readme', '')[:2000]}"
             )
             
@@ -74,19 +99,19 @@ class handler(BaseHTTPRequestHandler):
             # Generate project paper
             paper_prompt = (
                 f"Write a one-page project overview for the following GitHub repository. "
-                f"Include only the following sections:\n"
-                f"- Project Name\n"
-                f"- Purpose\n"
+                f"Include these sections:\n"
+                f"- Project Name and Purpose\n"
                 f"- Main Features\n"
-                f"- File/Folder Structure (if available)\n"
-                f"- Key Technologies Used\n"
+                f"- Technical Architecture (analyzing the file structure)\n"
+                f"- Key Technologies Used (inferred from files)\n"
                 f"- How to Use or Run the Project\n"
-                f"- Contribution Guidelines (if available)\n"
-                f"- License\n"
-                f"Do not include information about funding, badges, external links, or unrelated content. "
-                f"Be clear, concise, and professional.\n\n"
-                f"Repository: {data['owner']}/{data['repo']}\n"
-                f"Description: {data['description']}\n"
+                f"- Contribution Guidelines\n"
+                f"- License\n\n"
+                f"Repository Info:\n"
+                f"Owner: {data['owner']}\n"
+                f"Repo: {data['repo']}\n"
+                f"Description: {data['description']}\n\n"
+                f"File Structure:\n{structure_text}\n\n"
                 f"README: {data.get('readme', '')[:4000]}"
             )
             

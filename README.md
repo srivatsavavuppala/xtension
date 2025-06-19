@@ -1,29 +1,147 @@
-# GitHub Repo Summarizer Backend (Vercel-ready)
+# GitHub Repository Summarizer Chrome Extension 🚀
 
-This is a FastAPI backend for the GitHub Repo Summarizer Chrome Extension, ready to deploy on Vercel as a Python serverless API.
+A professional Chrome/Edge extension that provides instant, AI-powered summaries and documentation for any GitHub repository. Get a concise overview and a detailed project paper with just one click.
 
-## Project Structure
+## 🌟 Features
 
+- **Instant Repository Summary**: Get a clear, focused summary of any GitHub repository
+- **One-Page Project Documentation**: Generate comprehensive project documentation automatically
+- **AI-Powered Analysis**: Utilizes Groq's LLM for intelligent content generation
+- **Clean & Modern UI**: Intuitive interface with a professional design
+- **Cross-Browser Support**: Works on Chrome and Edge
+
+## 🛠️ Technical Architecture
+
+### Frontend (Chrome Extension)
 ```
-xtension/
-├── api/
-│   └── index.py         # FastAPI app (entry point for Vercel)
-├── requirements.txt     # Python dependencies
-├── README.md            # This file
-```
-
-## How to Deploy on Vercel
-
-1. **Push this folder to a GitHub repository.**
-2. **Go to [vercel.com](https://vercel.com/), sign up/log in, and create a new project.**
-3. **Import your GitHub repo.**
-4. **Vercel will auto-detect the `api/` directory and Python API.**
-5. **Set your environment variable `API_KEY` (your Groq key) in the Vercel dashboard.**
-6. **Deploy!**
-
-Your API will be available at:
-```
-https://your-vercel-project.vercel.app/api/summarize
+chrome-extension/
+├── manifest.json      # Extension configuration
+├── popup.html        # Extension popup interface
+├── popup.js         # UI logic and API communication
+├── content.js       # GitHub page interaction
+├── background.js    # Service worker (future use)
+└── styles.css       # Modern UI styling
 ```
 
-Update your Chrome extension to use this URL for summarization.
+### Backend (Vercel Serverless)
+```
+api/
+└── index.py         # FastAPI serverless endpoint
+```
+
+## 🔧 Technology Stack
+
+- **Frontend:**
+  - Vanilla JavaScript
+  - Chrome Extensions API
+  - Modern CSS3
+
+- **Backend:**
+  - Python 3.12+
+  - FastAPI
+  - Groq AI API
+  - Vercel Serverless Functions
+
+## 📦 Installation
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/yourusername/github-repo-summarizer.git
+   ```
+
+2. **Load the extension:**
+   - Open Chrome/Edge
+   - Go to Extensions (chrome://extensions/)
+   - Enable Developer Mode
+   - Click "Load unpacked"
+   - Select the `x-tension` folder
+
+3. **Backend setup (for development):**
+   ```bash
+   cd api
+   pip install -r requirements.txt
+   uvicorn index:app --reload
+   ```
+
+## 🚀 Deployment
+
+### Frontend (Chrome Web Store)
+- Package the extension
+- Submit to Chrome Web Store
+- Pending review and publication
+
+### Backend (Vercel)
+- Already deployed at: `https://xtension-git-main-srivatsavavuppalas-projects.vercel.app/api/index`
+- Automatically deploys from main branch
+- Environment variables managed in Vercel dashboard
+
+## 🔑 Environment Variables
+
+Required environment variables in Vercel:
+- `API_KEY`: Your Groq API key
+
+## 🎯 Usage
+
+1. Visit any GitHub repository
+2. Click the extension icon
+3. Click "Summarize This Repo"
+4. View the instant summary
+5. Download the detailed project paper
+
+## 🛡️ Security
+
+- API keys stored securely in Vercel
+- CORS protection implemented
+- No sensitive data stored locally
+- Secure communication with Groq API
+
+## ⚡ Performance
+
+- Instant UI feedback
+- Efficient API calls
+- Minimal resource usage
+- Optimized content processing
+
+## 🔜 Future Enhancements
+
+- Dark mode support
+- Custom summarization options
+- Batch repository analysis
+- Export in multiple formats
+- Repository comparison feature
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create your feature branch
+   ```bash
+   git checkout -b feature/amazing-feature
+   ```
+3. Commit your changes
+   ```bash
+   git commit -m 'Add amazing feature'
+   ```
+4. Push to the branch
+   ```bash
+   git push origin feature/amazing-feature
+   ```
+5. Open a Pull Request
+
+## 📝 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 👥 Authors
+
+- Srivatsava Vuppala - *Initial work* - [Your GitHub Profile](https://github.com/srivatsavavuppala)
+
+## 🙏 Acknowledgments
+
+- Groq API for AI capabilities
+- FastAPI for efficient backend
+- Vercel for serverless hosting
+- GitHub for inspiration
+
+---
+
+Made with ❤️ and ☕

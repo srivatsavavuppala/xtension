@@ -10,7 +10,7 @@ A professional Chrome/Edge extension that provides instant, AI-powered summaries
 - **Clean & Modern UI**: Intuitive interface with a professional design  
 - **Cross-Browser Support**: Works seamlessly on Chrome and Edge  
 
-![Extension Icon](icons/icon48.png)
+![Extension Icon](icons/icon128.png)
 
 ### Screenshots
 

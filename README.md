@@ -15,11 +15,11 @@ A professional Chrome/Edge extension that provides instant, AI-powered summaries
 ### Screenshots
 
 #### Popup Interface
-![Popup Interface](screenshots/ref_1.jpg)
+![Popup Interface](screenshots/ref_2.jpg)
 *The main extension popup interface*
 
 #### How to Unpack the Extension
-![How to Unpack](screenshots/ref_2.jpg)
+![How to Unpack](screenshots/ref_1.jpg)
 
 
 

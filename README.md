@@ -10,6 +10,19 @@ A professional Chrome/Edge extension that provides instant, AI-powered summaries
 - **Clean & Modern UI**: Intuitive interface with a professional design  
 - **Cross-Browser Support**: Works seamlessly on Chrome and Edge  
 
+## 📸 Visual Guide
+![Extension Icon](icons/icon128.png)
+
+### Screenshots
+
+#### Popup Interface
+![Popup Interface](screenshots/ref_1.jpg)
+*The main extension popup interface*
+
+#### How to Unpack the Extension
+![How to Unpack](screenshots/ref_2.jpg)
+*Step-by-step guide to loading the extension in Chrome/Edge*
+
 ## 🛠️ Technical Architecture
 
 ### Frontend (Chrome Extension)

@@ -16,6 +16,8 @@ A professional Chrome/Edge extension that provides instant, AI-powered summaries
 
 #### Popup Interface
 ![Popup Interface](screenshots/ref_2.jpg)
+
+
 *The main extension popup interface*
 
 #### How to Unpack the Extension

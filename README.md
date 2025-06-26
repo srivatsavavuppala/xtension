@@ -10,6 +10,16 @@ A professional Chrome/Edge extension that provides instant, AI-powered summaries
 - **Clean & Modern UI**: Intuitive interface with a professional design  
 - **Cross-Browser Support**: Works seamlessly on Chrome and Edge  
 
+## 🧪 Developer Testing Steps
+- Clone the repository and install dependencies (see Installation above).
+- Load the extension in Chrome/Edge via “Load unpacked” and select the xtension folder.
+- The backend server is already deployed and the extension points to the public API—no local server setup is needed.
+- Open any public GitHub repository page.
+- Click the extension icon and use the “Summarize This Repo” button.
+- Confirm that the summary and project paper are generated without errors.
+- Check the browser console (F12) for any errors or warnings.
+
+
 ![Extension Icon](icons/icon128.png)
 
 ### Screenshots

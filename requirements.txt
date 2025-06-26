@@ -3,6 +3,3 @@ uvicorn
 groq
 python-dotenv
 pydantic
-groq
-fastapi
-pydantic

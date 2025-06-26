@@ -66,7 +66,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             } catch (fetchError) {
               setLoadingState(false);
-              showMessage(`❌ Error generating summary: ${fetchError.message}. Please make sure the backend server is running on localhost:8000.`, 'error');
+              showMessage(`❌ Error generating summary: ${fetchError.message}. Please try again later or contact support if the problem persists.`, 'error');
             }
           });
         } catch (tabError) {

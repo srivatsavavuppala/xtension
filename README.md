@@ -9,6 +9,8 @@ A professional Chrome/Edge extension that provides instant, AI-powered summaries
 - **AI-Powered Analysis**: Uses Groq's LLM for intelligent content generation  
 - **Clean & Modern UI**: Intuitive interface with a professional design  
 - **Cross-Browser Support**: Works seamlessly on Chrome and Edge  
+- **Modern History Overlay**: View analyzed, visited, and favorite repositories in a sleek modal with tabs
+- **Favorites Management**: Add/remove favorites instantly with persistent storage and a unified card design
 
 ## 🧪 Developer Testing Steps
 - Clone the repository and install dependencies (see Installation above).
@@ -18,7 +20,9 @@ A professional Chrome/Edge extension that provides instant, AI-powered summaries
 - Click the extension icon and use the “Summarize This Repo” button.
 - Confirm that the summary and project paper are generated without errors.
 - Check the browser console (F12) for any errors or warnings.
-
+- Open the history overlay (clock/history icon) and verify the Analyzed, Visited, and Favorites tabs.
+- Add and remove favorites; confirm instant feedback and persistent storage.
+- Check that all cards (analyzed, visited, favorites) have a consistent, modern appearance.
 
 ![Extension Icon](icons/icon128.png)
 
@@ -39,6 +43,8 @@ A professional Chrome/Edge extension that provides instant, AI-powered summaries
 *Step-by-step guide to loading the extension in Chrome/Edge*
 
 ## 🛠️ Technical Architecture
+
+- Uses `chrome.storage.local` for all persistent data (favorites, analyzed, and visited history)
 
 ### Frontend (Chrome Extension)
 ```

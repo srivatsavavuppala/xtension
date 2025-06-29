@@ -3,7 +3,7 @@
   "name": "GitHub Repo Summarizer",
   "version": "1.0",
   "description": "AI-powered GitHub repository summarizer that generates concise overviews and project documentation.",
-  "permissions": ["scripting", "activeTab", "storage"],
+  "permissions": ["scripting", "activeTab", "storage","tabs"],
   "host_permissions": ["https://github.com/*"],
   "background": {
     "service_worker": "background.js"

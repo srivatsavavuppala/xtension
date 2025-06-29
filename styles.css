@@ -341,3 +341,37 @@ button:disabled {
     font-size: 24px;
   }
 }
+#history-content {
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+#history-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+#history-content::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 3px;
+}
+
+#history-content::-webkit-scrollbar-thumb {
+  background: rgba(102, 126, 234, 0.3);
+  border-radius: 3px;
+}
+
+#history-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(102, 126, 234, 0.5);
+}
+.history-modal {
+  display: flex;
+  flex-direction: column;
+  max-height: 85vh;
+  overflow: hidden;
+}
+
+.history-modal .history-body {
+  flex: 1;
+  overflow-y: auto;
+}

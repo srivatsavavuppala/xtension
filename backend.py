@@ -33,12 +33,6 @@ def summarize_repo(info: RepoInfo):
         f"Description: {info.description}\\n"
         f"README: {info.readme[:2000]}"
     )
-    summary_completion = client.chat.completions.create(
-        messages=[{"role": "user", "content": summary_prompt}],
-        model="llama-3.3-70b-versatile",
-        stream=False,
-    )
-    summary = summary_completion.choices[0].message.content
 
     paper_prompt = (
         f"Write a one-page project overview for the following GitHub repository. "
@@ -57,11 +51,22 @@ def summarize_repo(info: RepoInfo):
         f"Description: {info.description}\\n"
         f"README: {info.readme[:4000]}"
     )
-    paper_completion = client.chat.completions.create(
-        messages=[{"role": "user", "content": paper_prompt}],
-        model="llama-3.3-70b-versatile",
-        stream=False,
+    
+    response = requests.post(
+        AI_BACKEND_URL,
+        json = {
+            "repo": info.repo,
+            "owner": info.owner,
+            "description": info.description,
+            "readme": info.readme,
+            "summary_prompt": summary_prompt,
+            "paper_prompt": paper_prompt,
+            },
+            timeout = 60
     )
-    project_paper = paper_completion.choices[0].message.content
-
-    return {"summary": summary, "project_paper": project_paper}
+    response.raise_for_status()
+    data = response.json()
+    return {
+        "summary": data.get("summary", ""),
+        "project_paper": data.get("project_paper", "")
+    }

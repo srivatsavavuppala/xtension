@@ -1,7 +1,7 @@
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'extractRepoInfo') {
     try {
-      // Extract basic repo info
+      // Extract minimal repo info
       let repoName = '';
       let owner = '';
       let description = '';
@@ -27,35 +27,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         const metaDesc = document.querySelector('meta[name="description"]');
         if (metaDesc) description = metaDesc.content;
       }
-      // Fetch README using GitHub API
       if (repoName && owner) {
-        fetch(`https://api.github.com/repos/${owner}/${repoName}/readme`, {
-          headers: { 'Accept': 'application/vnd.github.v3.raw' }
-        })
-        .then(response => response.ok ? response.text() : '')
-        .then(readme => {
-          // Then fetch the repository structure
-          return fetch(`https://api.github.com/repos/${owner}/${repoName}/git/trees/master?recursive=1`)
-            .then(response => response.json())
-            .then(data => {
-              // Filter and organize file structure
-              const files = data.tree
-                .filter(item => !item.path.includes('node_modules/') && !item.path.includes('.git/'))
-                .map(item => ({
-                  path: item.path,
-                  type: item.type, // 'blob' for files, 'tree' for directories
-                  size: item.size
-                }));
-
-              // Send all information back
-              sendResponse({
-                repo: repoName,
-                owner,
-                description,
-                readme,
-                structure: files
-              });
-            });
+        sendResponse({
+          repo: repoName,
+          owner,
+          description
         });
       } else {
         sendResponse(null);
@@ -64,6 +40,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       console.error('Error extracting repo info:', e);
       sendResponse(null);
     }
-    return true; // Keep the message channel open for async response
+    return true;
   }
 });

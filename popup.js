@@ -1,4 +1,3 @@
-// Enhanced popup.js with improved history overlay
 document.addEventListener('DOMContentLoaded', function() {
   const summarizeBtn = document.getElementById('summarizeBtn');
   const downloadBtn = document.getElementById('downloadBtn');
@@ -6,9 +5,8 @@ document.addEventListener('DOMContentLoaded', function() {
   const historyIcon = document.getElementById('history-icon');
   let projectPaper = '';
   let historyOverlay = null;
-  let currentTab = 'analyzed'; // 'analyzed', 'visited', 'favorites'
+  let currentTab = 'analyzed';
 
-  // Check if we're on a GitHub page on load
   chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
     const currentUrl = tabs[0].url;
     if (!currentUrl.includes('github.com')) {
@@ -17,86 +15,141 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
+  function fetchWithTimeout(resource, options = {}, timeout = 20000) {
+    return Promise.race([
+      fetch(resource, options),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out')), timeout))
+    ]);
+  }
+
+  chrome.storage.local.get(['summaryStatus', 'summaryResult', 'summaryTab'], (result) => {
+    if (result.summaryStatus === 'pending') {
+      showMessage('🔍 Extracting repository information...', 'loading');
+      setLoadingState(true);
+    } else if (result.summaryStatus === 'done' && result.summaryResult) {
+      showMessage(result.summaryResult.summary, 'success');
+      projectPaper = result.summaryResult.project_paper;
+      downloadBtn.style.display = 'block';
+      setLoadingState(false);
+    }
+  });
+
   summarizeBtn.addEventListener('click', async () => {
     try {
-      // Start loading state
       setLoadingState(true);
       showMessage('🔍 Extracting repository information...', 'loading');
-      
+      chrome.storage.local.set({ summaryStatus: 'pending', summaryResult: null });
+      console.log('[Xtension] Extraction started. Querying active tab for repo info...');
+      let stillWorkingTimeout = null;
       chrome.tabs.query({active: true, currentWindow: true}, async (tabs) => {
         try {
-          // Track visited repo
           trackVisitedRepo(tabs[0].url);
-          
-          // Extract repo info
-          chrome.tabs.sendMessage(tabs[0].id, {action: 'extractRepoInfo'}, async (repoInfo) => {
-            if (!repoInfo) {
-              setLoadingState(false);
-              showMessage('❌ Could not extract repository information. Please make sure you\'re on a GitHub repository page.', 'error');
-              return;
-            }
-
-            showMessage('🤖 Generating AI summary...', 'loading');
-
-            try {
-              // Call the backend API
-              const response = await fetch('https://xtension-git-main-srivatsavavuppalas-projects.vercel.app/api/', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(repoInfo)
+          const sendMessageWithTimeout = (tabId, message, timeout = 30000) => {
+            return new Promise((resolve, reject) => {
+              let didRespond = false;
+              const timer = setTimeout(() => {
+                if (!didRespond) {
+                  didRespond = true;
+                  console.error('[Xtension] Extraction timed out.');
+                  setLoadingState(false);
+                  showMessage('❌ Timed out extracting repository information. For large repositories, please ensure the page is fully loaded and try again. <button id="retry-extract-btn" style="margin-left:10px;padding:2px 8px;">Retry</button>', 'error');
+                  chrome.storage.local.set({ summaryStatus: 'error', summaryResult: null });
+                  setTimeout(() => {
+                    const retryBtn = document.getElementById('retry-extract-btn');
+                    if (retryBtn) {
+                      retryBtn.onclick = () => {
+                        summarizeBtn.click();
+                      };
+                    }
+                  }, 100);
+                  reject(new Error('Timed out extracting repository information. The repository may be too large or the page is not supported.'));
+                }
+              }, timeout);
+              chrome.tabs.sendMessage(tabId, message, (response) => {
+                if (!didRespond) {
+                  clearTimeout(timer);
+                  didRespond = true;
+                  console.log('[Xtension] Extraction response received:', response);
+                  resolve(response);
+                }
               });
+            });
+          };
 
-              if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-              }
-
-              const data = await response.json();
-              
-              if (data.error) {
-                throw new Error(data.error);
-              }
-
-              // Success
-              setLoadingState(false);
-              showMessage(data.summary, 'success');
-              projectPaper = data.project_paper;
-              downloadBtn.style.display = 'block';
-
-              // Save to analyzed history
-              const now = Date.now();
-              const historyItem = {
-                url: tabs[0].url,
-                owner: repoInfo.owner,
-                repo: repoInfo.repo,
-                description: repoInfo.description,
-                summary: data.summary,
-                timestamp: now,
-                projectPaper: data.project_paper
-              };
-              
-              saveToAnalyzedHistory(historyItem);
-
-              // Animate download button appearance
-              setTimeout(() => {
-                downloadBtn.style.opacity = '1';
-                downloadBtn.style.transform = 'translateY(0)';
-              }, 100);
-
-            } catch (fetchError) {
-              setLoadingState(false);
-              showMessage(`❌ Error generating summary: ${fetchError.message}. Please try again later or contact support if the problem persists.`, 'error');
+          let repoInfo;
+          try {
+            repoInfo = await sendMessageWithTimeout(tabs[0].id, {action: 'extractRepoInfo'}, 30000);
+            console.log('[Xtension] Repo info extracted:', repoInfo);
+          } catch (timeoutErr) {
+            return;
+          }
+          if (!repoInfo) {
+            setLoadingState(false);
+            showMessage('❌ Could not extract repository information. Please make sure you\'re on a GitHub repository page.', 'error');
+            chrome.storage.local.set({ summaryStatus: 'error', summaryResult: null });
+            return;
+          }
+          showMessage('🤖 Generating AI summary...', 'loading');
+          console.log('[Xtension] Sending repo info to backend:', repoInfo);
+          stillWorkingTimeout = setTimeout(() => {
+            showMessage('⏳ Still working... Large repositories may take up to 30 seconds. Please wait.', 'loading');
+            console.log('[Xtension] Still working... waiting for backend response.');
+          }, 20000);
+          try {
+            const response = await fetchWithTimeout('https://xtension-git-main-srivatsavavuppalas-projects.vercel.app/api/', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(repoInfo)
+            }, 30000);
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
             }
-          });
+            const data = await response.json();
+            if (data.error) {
+              throw new Error(data.error);
+            }
+            clearTimeout(stillWorkingTimeout);
+            setLoadingState(false);
+            showMessage(data.summary, 'success');
+            projectPaper = data.project_paper;
+            downloadBtn.style.display = 'block';
+            chrome.storage.local.set({ summaryStatus: 'done', summaryResult: data, summaryTab: tabs[0].url });
+            const now = Date.now();
+            const historyItem = {
+              url: tabs[0].url,
+              owner: repoInfo.owner,
+              repo: repoInfo.repo,
+              description: repoInfo.description,
+              summary: data.summary,
+              timestamp: now,
+              projectPaper: data.project_paper
+            };
+            saveToAnalyzedHistory(historyItem);
+            setTimeout(() => {
+              downloadBtn.style.opacity = '1';
+              downloadBtn.style.transform = 'translateY(0)';
+            }, 100);
+            console.log('[Xtension] Summarization complete.');
+          } catch (fetchError) {
+            clearTimeout(stillWorkingTimeout);
+            setLoadingState(false);
+            showMessage(`❌ Error generating summary: ${fetchError.message}. Please try again later or contact support if the problem persists.`, 'error');
+            chrome.storage.local.set({ summaryStatus: 'error', summaryResult: null });
+            console.error('[Xtension] Summarization error:', fetchError);
+          }
         } catch (tabError) {
+          clearTimeout(stillWorkingTimeout);
           setLoadingState(false);
           showMessage('❌ Error accessing the current tab. Please refresh the page and try again.', 'error');
+          chrome.storage.local.set({ summaryStatus: 'error', summaryResult: null });
+          console.error('[Xtension] Tab access error:', tabError);
         }
       });
     } catch (error) {
       setLoadingState(false);
       showMessage(`❌ Unexpected error: ${error.message}`, 'error');
+      chrome.storage.local.set({ summaryStatus: 'error', summaryResult: null });
+      console.error('[Xtension] Unexpected error:', error);
     }
   });
 
@@ -105,7 +158,6 @@ document.addEventListener('DOMContentLoaded', function() {
       showMessage('❌ No project report available to download.', 'error');
       return;
     }
-
     try {
       const blob = new Blob([projectPaper], {type: 'text/plain'});
       const url = URL.createObjectURL(blob);
@@ -116,34 +168,26 @@ document.addEventListener('DOMContentLoaded', function() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      
-      // Visual feedback
       const originalText = downloadBtn.innerHTML;
       downloadBtn.innerHTML = '✅ Downloaded!';
       downloadBtn.style.background = 'linear-gradient(135deg, #48bb78 0%, #38a169 100%)';
-      
       setTimeout(() => {
         downloadBtn.innerHTML = originalText;
         downloadBtn.style.background = '';
       }, 2000);
-      
     } catch (error) {
-      showMessage(`❌ Error downloading file: ${error.message}`, 'error');
+      showMessage('❌ Error downloading file: ' + error.message, 'error');
     }
   });
 
-  // Track visited repositories
   function trackVisitedRepo(url) {
     if (!url.includes('github.com')) return;
-    
     const match = url.match(/^https:\/\/github\.com\/([^\/]+)\/([^\/]+)/);
     if (!match) return;
-    
     const owner = match[1];
     const repo = match[2];
     const now = Date.now();
     const oneWeek = 7 * 24 * 60 * 60 * 1000;
-    
     const visitedItem = {
       url,
       owner,
@@ -151,11 +195,8 @@ document.addEventListener('DOMContentLoaded', function() {
       timestamp: now,
       visitCount: 1
     };
-    
     chrome.storage.local.get({ visitedRepos: [] }, (result) => {
       let visited = result.visitedRepos;
-      
-      // Check if repo already exists
       const existingIndex = visited.findIndex(item => item.url === url);
       if (existingIndex !== -1) {
         visited[existingIndex].timestamp = now;
@@ -163,35 +204,26 @@ document.addEventListener('DOMContentLoaded', function() {
       } else {
         visited.unshift(visitedItem);
       }
-      
-      // Remove old entries (older than 1 week) and limit to 50
       visited = visited.filter(item => (now - item.timestamp) < oneWeek);
       visited = visited.slice(0, 50);
-      
       chrome.storage.local.set({ visitedRepos: visited });
     });
   }
 
-  // Save to analyzed history
   function saveToAnalyzedHistory(historyItem) {
     const now = Date.now();
     const oneDay = 24 * 60 * 60 * 1000;
-    
     chrome.storage.local.get({ analyzedHistory: [] }, (result) => {
       let history = result.analyzedHistory;
-      // Remove any previous entry for this repo and any older than 24 hours
       history = history.filter(item => item.url !== historyItem.url && (now - item.timestamp) < oneDay);
-      history.unshift(historyItem); // Add new item to the front
-      // Limit history to 20 items
+      history.unshift(historyItem);
       const limited = history.slice(0, 20);
       chrome.storage.local.set({ analyzedHistory: limited });
     });
   }
 
-  // Enhanced history overlay
   function showHistoryOverlay() {
     if (historyOverlay) return;
-    
     historyOverlay = document.createElement('div');
     historyOverlay.style.cssText = `
       position: fixed;
@@ -209,110 +241,55 @@ document.addEventListener('DOMContentLoaded', function() {
       backdrop-filter: blur(4px);
       animation: fadeIn 0.3s ease-out;
     `;
-    
     const modal = document.createElement('div');
     modal.style.cssText = `
       background: #fff;
-      border-radius: 20px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.3), 0 8px 30px rgba(0,0,0,0.15);
-      max-width: 550px;
-      width: 100%;
-      max-height: 85vh;
-      margin-top: 20px;
-      position: relative;
+      border-radius: 18px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.18);
+      width: 420px;
+      max-width: 98vw;
+      margin-top: 40px;
+      animation: slideUp 0.3s ease-out;
       overflow: hidden;
+      display: flex;
       flex-direction: column;
     `;
-    modal.className = "history-modal";
-
-    // Header with close button
+    modal.className = 'history-modal';
     const header = document.createElement('div');
-    header.style.cssText = `
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 24px 28px 20px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      position: relative;
-    `;
-    
-    const title = document.createElement('h3');
+    header.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 18px 24px 0 24px;';
+    const title = document.createElement('div');
     title.textContent = 'Repository History';
-    title.style.cssText = `
-      margin: 0;
-      font-size: 1.3em;
-      font-weight: 700;
-      letter-spacing: -0.3px;
-    `;
-    
+    title.style.cssText = 'font-size: 18px; font-weight: 700; color: #374151;';
     const closeBtn = document.createElement('button');
-closeBtn.setAttribute('aria-label', 'Close');
-closeBtn.innerHTML = '&times;';
-closeBtn.style.cssText = `
-  position: absolute;
-  top: 20px;
-  right: 24px;
-  width: 32px;
-  height: 32px;
-  font-size: 22px;
-  font-weight: bold;
-  color: white;
-  background-color: rgba(255, 255, 255, 0.15);
-  border: none;
-  border-radius: 50%;
-  cursor: pointer;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-`;
-
-closeBtn.onmouseover = () => {
-  closeBtn.style.backgroundColor = 'rgba(255,255,255,0.25)';
-};
-closeBtn.onmouseout = () => {
-  closeBtn.style.backgroundColor = 'rgba(255,255,255,0.15)';
-};
-
-    
-    // Tab navigation
+    closeBtn.innerHTML = '✖';
+    closeBtn.style.cssText = 'background: none; border: none; font-size: 20px; color: #64748b; cursor: pointer;';
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
     const tabContainer = document.createElement('div');
-    tabContainer.style.cssText = `
-      display: flex;
-      background: #f8fafc;
-      border-bottom: 1px solid #e2e8f0;
-    `;
-    
+    tabContainer.style.cssText = 'display: flex; border-bottom: 1px solid #e2e8f0; margin: 18px 0 0 0;';
     const tabs = [
-      { id: 'analyzed', label: '🔍 Analyzed', icon: '📊' },
-      { id: 'visited', label: '👁️ Visited', icon: '🔗' },
-      { id: 'favorites', label: '⭐ Favorites', icon: '❤️' }
+      { id: 'analyzed', label: '📊 Analyzed' },
+      { id: 'visited', label: '🔗 Visited' },
+      { id: 'favorites', label: '❤️ Favorites' }
     ];
-    
     tabs.forEach(tab => {
       const tabBtn = document.createElement('button');
-      tabBtn.innerHTML = `
-        <span style="margin-right: 8px;">${tab.icon}</span>
-        ${tab.label.split(' ')[1]}
-      `;
-      tabBtn.style.cssText = `
-        flex: 1;
-        padding: 16px 20px;
-        border: none;
-        background: ${currentTab === tab.id ? '#fff' : 'transparent'};
-        color: ${currentTab === tab.id ? '#667eea' : '#64748b'};
-        font-weight: ${currentTab === tab.id ? '600' : '500'};
-        font-size: 14px;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        border-bottom: 3px solid ${currentTab === tab.id ? '#667eea' : 'transparent'};
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      `;
-      
+      tabBtn.innerHTML = '<span style="margin-right: 8px;">' + tab.label.split(' ')[0] + '</span> ' + tab.label.split(' ')[1];
+      tabBtn.style.cssText =
+        'flex: 1;' +
+        'padding: 16px 20px;' +
+        'border: none;' +
+        'background: ' + (currentTab === tab.id ? '#fff' : 'transparent') + ';' +
+        'color: ' + (currentTab === tab.id ? '#667eea' : '#64748b') + ';' +
+        'font-weight: ' + (currentTab === tab.id ? '600' : '500') + ';' +
+        'font-size: 14px;' +
+        'cursor: pointer;' +
+        'transition: all 0.2s ease;' +
+        'border-bottom: 3px solid ' + (currentTab === tab.id ? '#667eea' : 'transparent') + ';' +
+        'display: flex;' +
+        'align-items: center;' +
+        'justify-content: center;';
       tabBtn.onmouseover = () => {
         if (currentTab !== tab.id) {
           tabBtn.style.background = '#f1f5f9';
@@ -323,45 +300,29 @@ closeBtn.onmouseout = () => {
           tabBtn.style.background = 'transparent';
         }
       };
-      
       tabBtn.onclick = () => {
         currentTab = tab.id;
         loadHistoryContent();
         updateTabStyles();
       };
-      
       tabContainer.appendChild(tabBtn);
     });
-    
-    // ✅ Content container
+    modal.appendChild(tabContainer);
     const contentContainer = document.createElement('div');
     contentContainer.id = 'history-content';
     modal.appendChild(contentContainer);
-
-    
-    // Update tab styles function
     function updateTabStyles() {
       const tabButtons = tabContainer.querySelectorAll('button');
-      tabButtons.forEach((btn, index) => {
-        const isActive = tabs[index].id === currentTab;
+      tabButtons.forEach(function(btn, index) {
+        var isActive = tabs[index].id === currentTab;
         btn.style.background = isActive ? '#fff' : 'transparent';
         btn.style.color = isActive ? '#667eea' : '#64748b';
         btn.style.fontWeight = isActive ? '600' : '500';
-        btn.style.borderBottom = `3px solid ${isActive ? '#667eea' : 'transparent'}`;
+        btn.style.borderBottom = '3px solid ' + (isActive ? '#667eea' : 'transparent');
       });
     }
-    
-    header.appendChild(title);
-    header.appendChild(closeBtn);
-    modal.appendChild(header);
-    modal.appendChild(tabContainer);
-    modal.className = 'history-modal';
-    modal.appendChild(contentContainer);
     historyOverlay.appendChild(modal);
     document.body.appendChild(historyOverlay);
-
-    
-    // Add CSS animations
     const style = document.createElement('style');
     style.textContent = `
       @keyframes fadeIn {
@@ -374,16 +335,12 @@ closeBtn.onmouseout = () => {
       }
     `;
     document.head.appendChild(style);
-    
-    // Close functionality
     closeBtn.onclick = closeHistoryOverlay;
     historyOverlay.onclick = (e) => {
       if (e.target === historyOverlay) {
         closeHistoryOverlay();
       }
     };
-    
-    // Load initial content
     loadHistoryContent();
   }
 
@@ -392,7 +349,6 @@ closeBtn.onmouseout = () => {
       historyOverlay.style.animation = 'fadeOut 0.2s ease-out forwards';
       const modal = historyOverlay.querySelector('div');
       modal.style.animation = 'slideDown 0.2s ease-out forwards';
-      
       const style = document.createElement('style');
       style.textContent = `
         @keyframes fadeOut {
@@ -405,7 +361,6 @@ closeBtn.onmouseout = () => {
         }
       `;
       document.head.appendChild(style);
-      
       setTimeout(() => {
         historyOverlay.remove();
         historyOverlay = null;
@@ -417,9 +372,7 @@ closeBtn.onmouseout = () => {
   function loadHistoryContent() {
     const container = document.getElementById('history-content');
     if (!container) return;
-    
     container.innerHTML = '<div style="padding: 20px; text-align: center; color: #64748b;">Loading...</div>';
-    
     if (currentTab === 'analyzed') {
       loadAnalyzedHistory(container);
     } else if (currentTab === 'visited') {
@@ -434,7 +387,6 @@ closeBtn.onmouseout = () => {
       const now = Date.now();
       const oneDay = 24 * 60 * 60 * 1000;
       const history = result.analyzedHistory.filter(item => (now - item.timestamp) < oneDay);
-      
       if (history.length === 0) {
         container.innerHTML = createEmptyState('📊', 'No analyzed repositories', 'Analyze some repositories to see them here!');
       } else {
@@ -450,7 +402,6 @@ closeBtn.onmouseout = () => {
   function loadVisitedHistory(container) {
     chrome.storage.local.get({ visitedRepos: [] }, (result) => {
       const visited = result.visitedRepos;
-      
       if (visited.length === 0) {
         container.innerHTML = createEmptyState('🔗', 'No visited repositories', 'Browse GitHub repositories to see them here!');
       } else {
@@ -466,7 +417,6 @@ closeBtn.onmouseout = () => {
   function loadFavoritesHistory(container) {
     chrome.storage.local.get({ favoriteRepos: [] }, (result) => {
       const favorites = result.favoriteRepos || [];
-      
       if (favorites.length === 0) {
         container.innerHTML = createEmptyState('❤️', 'No favorite repositories', 'Star repositories to add them to favorites!');
       } else {
@@ -514,14 +464,12 @@ closeBtn.onmouseout = () => {
     itemDiv.style.borderColor = '#e2e8f0';
   };
 
-  // Check if favorite
   let isFavorite = false;
   try {
     const favs = JSON.parse(localStorage.getItem('favoriteRepos') || '[]');
     isFavorite = favs.some(f => f.url === item.url);
   } catch {}
 
-  // Build inner HTML except for the buttons
   itemDiv.innerHTML = `
     <div style="margin-bottom: 12px;">
       <div style="display: flex; align-items: center; justify-content: space-between;">
@@ -545,7 +493,6 @@ closeBtn.onmouseout = () => {
     </div>
   `;
 
-  // Add Download button
   const btnRow = itemDiv.querySelector('.analyzed-btn-row');
   const downloadBtn = document.createElement('button');
   downloadBtn.textContent = '📄 Download Report';
@@ -556,14 +503,11 @@ closeBtn.onmouseout = () => {
   };
   btnRow.appendChild(downloadBtn);
 
-  // Add Favorite button
-// Add Favorite button (modern, always in sync)
 const favBtn = document.createElement('button');
 favBtn.className = 'favorite-btn';
 favBtn.style.cssText = 'background: none; color: #f59e0b; border: none; padding: 6px 12px; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 4px;';
 favBtn.innerHTML = '<span class="fav-star" style="font-size: 15px;">☆</span> <span>Add to Favorites</span>';
 
-// Set initial state from chrome.storage.local
 chrome.storage.local.get({ favoriteRepos: [] }, (result) => {
   const favs = result.favoriteRepos || [];
   const exists = favs.some(f => f.url === item.url);
@@ -591,7 +535,6 @@ favBtn.onclick = (e) => {
       favBtn.style.background = 'rgba(245, 158, 11, 0.08)';
     }
     chrome.storage.local.set({ favoriteRepos: favs }, () => {
-      // If on favorites tab, refresh
       if (typeof currentTab !== 'undefined' && currentTab === 'favorites') {
         loadHistoryContent();
       }
@@ -609,25 +552,6 @@ btnRow.appendChild(favBtn);
 
   return itemDiv;
 }
-  setTimeout(() => {
-  const favBtn = itemDiv.querySelector('.favorite-btn');
-  if (favBtn) {
-    favBtn.onclick = (e) => {
-      e.stopPropagation();
-      let favs = [];
-      try { favs = JSON.parse(localStorage.getItem('favoriteRepos') || '[]'); } catch {}
-      const exists = favs.some(f => f.url === item.url);
-      if (exists) {
-        favs = favs.filter(f => f.url !== item.url);
-        favBtn.textContent = '☆ Add to Favorites';
-      } else {
-        favs.push({ url: item.url, owner: item.owner, repo: item.repo, timestamp: Date.now() });
-        favBtn.textContent = '★ Favorited';
-      }
-      localStorage.setItem('favoriteRepos', JSON.stringify(favs));
-    };
-  }
-}, 0);
 
   function createVisitedHistoryItem(item, index) {
     const itemDiv = document.createElement('div');
@@ -641,7 +565,6 @@ btnRow.appendChild(favBtn);
       cursor: pointer;
       position: relative;
     `;
-    
     itemDiv.onmouseover = () => {
       itemDiv.style.transform = 'translateY(-1px)';
       itemDiv.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)';
@@ -650,7 +573,6 @@ btnRow.appendChild(favBtn);
       itemDiv.style.transform = 'translateY(0)';
       itemDiv.style.boxShadow = 'none';
     };
-    
     itemDiv.innerHTML = `
       <div style="display: flex; align-items: center; justify-content: space-between;">
         <div style="display: flex; align-items: center;">
@@ -666,11 +588,9 @@ btnRow.appendChild(favBtn);
         </span>
       </div>
     `;
-    
     itemDiv.onclick = () => {
       window.open(item.url, '_blank');
     };
-    
     return itemDiv;
   }
 function createFavoriteHistoryItem(item, index) {
@@ -717,7 +637,6 @@ function createFavoriteHistoryItem(item, index) {
     </div>
   `;
 
-  // Remove favorite button logic
   const removeBtn = itemDiv.querySelector('.remove-fav-btn');
   if (removeBtn) {
     removeBtn.onclick = (e) => {
@@ -728,14 +647,12 @@ function createFavoriteHistoryItem(item, index) {
 
   itemDiv.onclick = (e) => {
     if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'A') {
-      // Optionally show a message or do nothing
     }
   };
 
   return itemDiv;
 }
 
-  // Global functions for button actions
   window.downloadReport = function(url) {
     chrome.storage.local.get({ analyzedHistory: [] }, (result) => {
       const item = result.analyzedHistory.find(h => h.url === url);
@@ -755,13 +672,11 @@ function createFavoriteHistoryItem(item, index) {
     chrome.storage.local.get({ favoriteRepos: [] }, (result) => {
       let favorites = result.favoriteRepos || [];
       const existingIndex = favorites.findIndex(f => f.url === url);
-      
       if (existingIndex === -1) {
         favorites.push({ url, owner, repo, timestamp: Date.now() });
       } else {
         favorites.splice(existingIndex, 1);
       }
-      
       chrome.storage.local.set({ favoriteRepos: favorites }, () => {
         if (currentTab === 'favorites') {
           loadHistoryContent();
@@ -798,11 +713,10 @@ function createFavoriteHistoryItem(item, index) {
   }
 
   function showMessage(message, type = 'info') {
-    summaryDiv.className = ''; // Reset classes
+    summaryDiv.className = '';
     summaryDiv.classList.add(type);
     summaryDiv.textContent = message;
     summaryDiv.style.display = 'block';
-    // Add status indicator for loading
     if (type === 'loading') {
       const indicator = document.createElement('span');
       indicator.className = 'status-indicator active';
@@ -820,14 +734,12 @@ function createFavoriteHistoryItem(item, index) {
     const minutes = Math.floor(diff / (1000 * 60));
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    
     if (minutes < 1) return 'Just now';
     if (minutes < 60) return `${minutes}m ago`;
     if (hours < 24) return `${hours}h ago`;
     return `${days}d ago`;
   }
 
-  // Initialize download button styling
   downloadBtn.style.opacity = '0';
   downloadBtn.style.transform = 'translateY(10px)';
   downloadBtn.style.transition = 'all 0.3s ease';

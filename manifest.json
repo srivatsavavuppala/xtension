@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "GitHub Repo Summarizer",
   "version": "1.2",
-  "description": "AI-powered GitHub repository summarizer with robust handling for large repositories, professional logging, session restore, and a polished, user-friendly UI. Generates concise overviews and downloadable project documentation with consistent, visually appealing controls.",
+  "description": "AI-powered GitHub repo summarizer. Generates concise overviews and downloadable project docs with a user-friendly UI.",
   "permissions": ["scripting", "activeTab", "storage","tabs"],
   "host_permissions": ["https://github.com/*"],
   "background": {

@@ -26,11 +26,27 @@ document.addEventListener('DOMContentLoaded', function() {
     if (result.summaryStatus === 'pending') {
       showMessage('🔍 Extracting repository information...', 'loading');
       setLoadingState(true);
+      downloadBtn.style.display = 'none';
     } else if (result.summaryStatus === 'done' && result.summaryResult) {
       showMessage(result.summaryResult.summary, 'success');
       projectPaper = result.summaryResult.project_paper;
       downloadBtn.style.display = 'block';
+      downloadBtn.style.background = '#10b981';
+      downloadBtn.style.color = 'white';
+      downloadBtn.style.border = 'none';
+      downloadBtn.style.boxShadow = 'none';
+      downloadBtn.style.opacity = '1';
+      downloadBtn.style.transform = 'translateY(0)';
       setLoadingState(false);
+    } else {
+      // Hide and reset download button if not available
+      downloadBtn.style.display = 'none';
+      downloadBtn.style.background = '';
+      downloadBtn.style.color = '';
+      downloadBtn.style.border = '';
+      downloadBtn.style.boxShadow = '';
+      downloadBtn.style.opacity = '';
+      downloadBtn.style.transform = '';
     }
   });
 
@@ -256,16 +272,19 @@ document.addEventListener('DOMContentLoaded', function() {
     `;
     modal.className = 'history-modal';
     const header = document.createElement('div');
-    header.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 18px 24px 0 24px;';
-    const title = document.createElement('div');
-    title.textContent = 'Repository History';
-    title.style.cssText = 'font-size: 18px; font-weight: 700; color: #374151;';
-    const closeBtn = document.createElement('button');
-    closeBtn.innerHTML = '✖';
-    closeBtn.style.cssText = 'background: none; border: none; font-size: 20px; color: #64748b; cursor: pointer;';
-    header.appendChild(title);
-    header.appendChild(closeBtn);
-    modal.appendChild(header);
+header.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 18px 24px 0 24px;';
+const title = document.createElement('div');
+title.textContent = 'Repo History ⏳';
+title.style.cssText = 'font-size: 15px; font-weight: 600; color: #374151; max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;';
+const closeBtn = document.createElement('button');
+closeBtn.innerHTML = '✖';
+closeBtn.setAttribute('aria-label', 'Close');
+closeBtn.style.cssText = 'width: 32px; height: 32px; min-width: 32px; min-height: 32px; max-width: 32px; max-height: 32px; display: flex; align-items: center; justify-content: center; background: none; border: none; font-size: 18px; color: #64748b; cursor: pointer; border-radius: 6px; transition: background 0.2s; margin-left: 8px;';
+closeBtn.onmouseover = () => { closeBtn.style.background = '#f1f5f9'; };
+closeBtn.onmouseout = () => { closeBtn.style.background = 'none'; };
+header.appendChild(title);
+header.appendChild(closeBtn);
+modal.appendChild(header);
     const tabContainer = document.createElement('div');
     tabContainer.style.cssText = 'display: flex; border-bottom: 1px solid #e2e8f0; margin: 18px 0 0 0;';
     const tabs = [

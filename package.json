@@ -1,0 +1,72 @@
+{
+  "name": "github-repo-summarizer",
+  "version": "1.4.0",
+  "description": "AI-powered GitHub repository summarizer Chrome extension",
+  "author": "Srivatsava Vuppala",
+  "license": "MIT",
+  "scripts": {
+    "lint": "eslint src/ --ext .js",
+    "lint:fix": "eslint src/ --ext .js --fix",
+    "format": "prettier --write src/**/*.{js,html,css}",
+    "build": "npm run lint && npm run format",
+    "dev": "npm run lint:fix && npm run format",
+    "test": "echo 'Tests not implemented yet' && exit 0",
+    "validate": "node scripts/validate-manifest.js"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.5",
+    "@eslint/js": "^8.57.0"
+  },
+  "eslintConfig": {
+    "env": {
+      "browser": true,
+      "es2022": true,
+      "webextensions": true
+    },
+    "extends": ["eslint:recommended"],
+    "parserOptions": {
+      "ecmaVersion": 2022,
+      "sourceType": "module"
+    },
+    "globals": {
+      "chrome": "readonly",
+      "Utils": "readonly",
+      "ThemeManager": "readonly",
+      "APIManager": "readonly",
+      "StorageManager": "readonly",
+      "HistoryManager": "readonly"
+    },
+    "rules": {
+      "no-unused-vars": "warn",
+      "no-console": "off",
+      "prefer-const": "error",
+      "no-var": "error",
+      "eqeqeq": "error",
+      "curly": "error",
+      "no-eval": "error",
+      "no-implied-eval": "error",
+      "no-new-func": "error"
+    }
+  },
+  "prettier": {
+    "semi": true,
+    "trailingComma": "es5",
+    "singleQuote": true,
+    "printWidth": 100,
+    "tabWidth": 2,
+    "useTabs": false
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/srivatsavavuppala/xtension.git"
+  },
+  "keywords": [
+    "github",
+    "chrome-extension",
+    "ai",
+    "summarizer",
+    "repository",
+    "analysis"
+  ]
+}

@@ -136,13 +136,23 @@ Required environment variables in Vercel:
 - Minimal resource usage  
 - Optimized content processing  
 
+## ✨ Recent Improvements (v1.4.0)
+
+- **🏗️ Modular Architecture**: Completely refactored codebase with separate modules for better maintainability
+- **🌙 Fixed Dark Mode**: Proper theme switching with consistent styling across all components  
+- **⚡ Enhanced Performance**: Added intelligent caching system to reduce redundant API calls
+- **🔒 Improved Security**: Input sanitization, CSP headers, and better error handling
+- **📊 Better Error Handling**: User-friendly error messages with proper error categorization
+- **🛠️ Development Tools**: Added linting, formatting, and build validation scripts
+- **📚 Comprehensive Documentation**: Detailed development guide and API documentation
+
 ## 🔜 Future Enhancements
 
-- Dark mode support  
 - Custom summarization options  
 - Batch repository analysis  
 - Export in multiple formats  
-- Repository comparison feature  
+- Repository comparison feature
+- Automated testing suite  
 
 ## 🤝 Contributing
 

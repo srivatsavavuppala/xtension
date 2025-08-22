@@ -388,37 +388,14 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
   const summaryDiv = document.getElementById('summary');
   const historyIcon = document.getElementById('history-icon');
   if (historyIcon) {
-  historyIcon.style.cssText = [
-    'position: absolute',
-    'top: 8px',
-    'right: 8px', 
-    'z-index: 10001',
-    'background: transparent',
-    'border: none',
-    'border-radius: 0',
-    'width: 32px',
-    'height: 32px',
-    'display: flex',
-    'align-items: center',
-    'justify-content: center',
-    'font-size: 16px',
-    'cursor: pointer',
-    'transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-    'box-shadow: none',
-    'color: #374151',
-    'overflow: hidden'
-  ].join(';') + ';';
   const updateHistoryIconTheme = () => {
     if (document.body.classList.contains('dark-theme')) {
-      historyIcon.style.background = 'transparent';
-      historyIcon.style.border = 'none';
       historyIcon.style.color = '#f1f5f9';
     } else {
-      historyIcon.style.background = 'transparent';
-      historyIcon.style.border = 'none';
       historyIcon.style.color = '#374151';
     }
   };
+  
   
   // Add observer for theme changes
   const observer = new MutationObserver(updateHistoryIconTheme);
@@ -474,6 +451,7 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
       showMessage(result.summaryResult.summary, 'success');
       projectPaper = result.summaryResult.project_paper;
       downloadBtn.style.display = 'block';
+      clearSessionBtn.style.display = 'block';
       downloadBtn.style.background = '#10b981';
       downloadBtn.style.color = 'white';
       downloadBtn.style.border = 'none';
@@ -572,6 +550,7 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
             showMessage(data.summary, 'success');
             projectPaper = data.project_paper;
             downloadBtn.style.display = 'block';
+            clearSessionBtn.style.display = 'block';
             chrome.storage.local.set({ summaryStatus: 'done', summaryResult: data, summaryTab: tabs[0].url });
             const now = Date.now();
             const historyItem = {
@@ -638,7 +617,15 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
       showMessage('❌ Error downloading file: ' + error.message, 'error');
     }
   });
+  const clearSessionBtn = document.getElementById('clearSessionBtn');
 
+  clearSessionBtn.addEventListener('click', () => {
+    chrome.storage.local.remove(['summaryStatus', 'summaryResult', 'summaryTab'], () => {
+      showMessage('🧹 Session cleared. You can generate a new summary now.', 'info');
+      downloadBtn.style.display = 'none';
+      clearSessionBtn.style.display = 'none';
+    });
+  });
   function trackVisitedRepo(url) {
     if (!url.includes('github.com')) return;
     const match = url.match(/^https:\/\/github\.com\/([^\/]+)\/([^\/]+)/);

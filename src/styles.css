@@ -72,7 +72,7 @@ body {
   text-align: center;
   margin-bottom: 28px;
   width: 100%;
-  position: relative;
+  position: static !important;
   left: auto;
   right: auto;
   transform: none;
@@ -208,16 +208,16 @@ button:disabled {
   margin-top: 8px;
   margin-bottom: 16px;
   color: #2d3748;
-  font-size: 0.95rem;
-  line-height: 1.6;
+  font-size: 1rem;
+  line-height: 1.75;
   background: rgba(255, 255, 255, 0.8);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 16px;
-  padding: 20px;
+  border-radius: 18px;
+  padding: 24px;
   width: 100%;
   min-height: 120px;
-  max-height: 200px;
+  max-height: 260px;
   overflow-y: auto;
   box-shadow: 
     inset 0 2px 4px rgba(0, 0, 0, 0.06),
@@ -278,6 +278,28 @@ button:disabled {
     0 12px 32px rgba(72, 187, 120, 0.3),
     0 6px 16px rgba(0, 0, 0, 0.15);
 }
+
+#clearSessionBtn {
+  background: linear-gradient(135deg, #f56565 0%, #c53030 100%);
+  color: #fff;
+  margin-top: 8px;
+  border: none;
+  border-radius: 16px;
+  padding: 12px 20px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  width: 100%;
+  cursor: pointer;
+  box-shadow: 
+    0 8px 24px rgba(245, 101, 101, 0.25),
+    0 4px 12px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+}
+#clearSessionBtn:hover {
+  background: linear-gradient(135deg, #c53030 0%, #9b2c2c 100%);
+  transform: translateY(-2px) scale(1.02);
+}
+
 
 .status-indicator {
   width: 12px;
@@ -342,12 +364,11 @@ button:disabled {
   }
 }
 
-/* Theme toggle and history icon positioning */
 #theme-toggle, #history-icon {
   position: absolute !important;
-  top: 12px !important;
-  width: 36px !important;
-  height: 36px !important;
+  top: 8px !important;
+  width: 32px !important;
+  height: 32px !important;
   z-index: 10001 !important;
   background: transparent !important;
   border: none !important;
@@ -357,7 +378,6 @@ button:disabled {
   justify-content: center !important;
   cursor: pointer !important;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-  backdrop-filter: none !important;
   box-shadow: none !important;
 }
 
@@ -448,7 +468,7 @@ body:not(.dark-theme) #theme-toggle {
 }
 #history-content {
   max-height: 400px;
-  overflow-y: auto;
+  overflow-y: hidden;
   padding-right: 6px;
 }
 
@@ -478,5 +498,6 @@ body:not(.dark-theme) #theme-toggle {
 
 .history-modal .history-body {
   flex: 1;
-  overflow-y: auto;
+  overflow-y: hidden;
 }
+

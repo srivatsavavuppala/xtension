@@ -11,7 +11,7 @@
       min-height: 500px;
       max-height: 600px;
       overflow-x: hidden;
-      overflow-y: auto;
+      overflow-y: hidden;
     }
     #main {
       min-height: 480px;
@@ -22,13 +22,15 @@
 </head>
 <body>
   <div id="main">
+    <img src="../icons/history.png" id="history-icon" title="View history">
     <div class="header">
       <div class="logo">
         <img src="../icons/icon48.png" alt="Repo Summarizer">
       </div>
       <h2>Repo Summarizer</h2>
       <p class="subtitle">AI-powered GitHub analysis</p>
-      <img src="icons/history.png" id="history-icon" title="View history" style="position:absolute;top:8px;right:8px;width:28px;height:28px;cursor:pointer;filter:drop-shadow(0 1px 2px #8882);">
+      
+
     </div>
     
     <div class="button-container">
@@ -42,6 +44,7 @@
     <button id="downloadBtn" style="display:none;">
       📄 Download Project Report
     </button>
+    <button id="clearSessionBtn" style="display:none;">🧹</button>
   </div>
   <script src="popup.js"></script>
 </body>

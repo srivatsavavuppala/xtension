@@ -101,6 +101,62 @@ body.dark-theme, body.dark-theme #popup {
   background: var(--popup-bg) !important;
   color: var(--popup-text) !important;
 }
+
+body.dark-theme #main {
+  background: rgba(35, 35, 42, 0.95) !important;
+  color: #f1f5f9 !important;
+  backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2) !important;
+}
+
+body.dark-theme h2 {
+  background: linear-gradient(135deg, #a3e635 0%, #84cc16 100%) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
+}
+
+body.dark-theme .subtitle {
+  color: #a3a3a3 !important;
+}
+
+body.dark-theme button {
+  background: linear-gradient(135deg, #334155 0%, #1e293b 100%) !important;
+  color: #f1f5f9 !important;
+}
+
+body.dark-theme #theme-toggle,
+body.dark-theme #history-icon {
+  background: transparent !important;
+  border: none !important;
+  color: #f1f5f9 !important;
+  box-shadow: none !important;
+}
+
+body.dark-theme #theme-toggle:hover,
+body.dark-theme #history-icon:hover {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Light theme icon styling */
+body:not(.dark-theme) #theme-toggle,
+body:not(.dark-theme) #history-icon {
+  background: transparent !important;
+  border: none !important;
+  color: #374151 !important;
+  box-shadow: none !important;
+}
+
+body:not(.dark-theme) #theme-toggle:hover,
+body:not(.dark-theme) #history-icon:hover {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
 body.dark-theme .history-modal, body.dark-theme .analyzed-btn-row, body.dark-theme .favorite-btn, body.dark-theme .remove-fav-btn {
   background: var(--modal-bg) !important;
   color: var(--modal-text) !important;
@@ -115,7 +171,7 @@ body.dark-theme button, body.dark-theme .tab-btn, body.dark-theme .favorite-btn 
   color: #f1f5f9 !important;
   border-color: #27272a !important;
 }
-body.dark-theme input, body.dark-theme textarea {the modes are not switching correctly; the home page color is still white in dark mode and is not changing at all like history page and the history and mode switch buttons shouldn't be visible in the history page. can you please tell me where to add or change the code from which line to line?
+body.dark-theme input, body.dark-theme textarea {
   background: #23232a !important;
   color: #f1f5f9 !important;
   border-color: #27272a !important;
@@ -146,13 +202,13 @@ body.dark-theme #summary {
 `;
 document.head.appendChild(themeStyle);
 document.addEventListener('DOMContentLoaded', function() {
-// THEME TOGGLE UI - Fixed positioning
+// THEME TOGGLE UI - Original positioning with improved animations
 const themeToggle = document.createElement('button');
 themeToggle.id = 'theme-toggle';
 themeToggle.innerHTML = '🌙'; // Default to moon icon for light mode
 themeToggle.setAttribute('aria-label', 'Toggle dark/light mode');
 themeToggle.style.cssText = [
-  'position: fixed',
+  'position: absolute',
   'top: 8px',
   'left: 8px',
   'z-index: 10001',
@@ -163,60 +219,183 @@ themeToggle.style.cssText = [
   'justify-content: center',
   'font-size: 18px',
   'background: transparent',
-  'border: 1px solid #e2e8f0',
-  'border-radius: 8px',
+  'border: none',
+  'border-radius: 0',
   'cursor: pointer',
-  'transition: all 0.2s ease',
-  'box-shadow: 0 2px 4px rgba(0,0,0,0.1)',
-  'color: #374151'
+  'transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+  'box-shadow: none',
+  'color: #374151',
+  'overflow: hidden'
 ].join(';') + ';'
 
-// Theme toggle functionality
+// Theme toggle functionality with smooth animations
 function setTheme(isDark) {
   if (isDark) {
     document.body.classList.add('dark-theme');
-    themeToggle.innerHTML = '☀️';
+    // Animate sun icon appearance
+    themeToggle.style.transform = 'scale(0.8) rotate(180deg)';
+    setTimeout(() => {
+      themeToggle.innerHTML = '☀️';
+      themeToggle.style.transform = 'scale(1) rotate(0deg)';
+    }, 150);
     themeToggle.style.background = 'transparent';
-    themeToggle.style.borderColor = '#27272a';
+    themeToggle.style.border = 'none';
     themeToggle.style.color = '#f1f5f9';
   } else {
     document.body.classList.remove('dark-theme');
-    themeToggle.innerHTML = '🌙';
+    // Animate moon icon appearance
+    themeToggle.style.transform = 'scale(0.8) rotate(-180deg)';
+    setTimeout(() => {
+      themeToggle.innerHTML = '🌙';
+      themeToggle.style.transform = 'scale(1) rotate(0deg)';
+    }, 150);
     themeToggle.style.background = 'transparent';
-    themeToggle.style.borderColor = '#e2e8f0';
+    themeToggle.style.border = 'none';
     themeToggle.style.color = '#374151';
+  }
+  
+  // Ensure transform is reset after animation completes
+  setTimeout(() => {
+    if (!themeToggle.classList.contains('animating')) {
+      themeToggle.style.transform = '';
+    }
+  }, 300);
+}
+
+// Enhanced click handler with animation
+themeToggle.onclick = () => {
+  // Prevent multiple rapid clicks
+  if (themeToggle.classList.contains('animating')) return;
+  
+  themeToggle.classList.add('animating');
+  const isDark = !document.body.classList.contains('dark-theme');
+  
+  // Add click animation
+  themeToggle.style.transform = 'scale(0.9)';
+  
+  setTimeout(() => {
+    setTheme(isDark);
+    chrome.storage.local.set({ theme: isDark ? 'dark' : 'light' });
+    
+    // Remove animation class after transition
+    setTimeout(() => {
+      themeToggle.classList.remove('animating');
+      // Reset transform to prevent accumulation
+      themeToggle.style.transform = '';
+    }, 300);
+  }, 100);
+};
+
+// Enhanced hover effects
+themeToggle.onmouseover = function() {
+  if (!themeToggle.classList.contains('animating')) {
+    themeToggle.style.transform = 'scale(1.1)';
+    themeToggle.style.boxShadow = 'none';
+  }
+};
+
+themeToggle.onmouseout = function() {
+  if (!themeToggle.classList.contains('animating')) {
+    themeToggle.style.transform = 'scale(1)';
+    themeToggle.style.boxShadow = 'none';
+  }
+};
+
+// Add a safeguard to reset transforms if they get corrupted
+function resetThemeToggleTransform() {
+  if (themeToggle && !themeToggle.classList.contains('animating')) {
+    themeToggle.style.transform = '';
   }
 }
 
-themeToggle.onclick = () => {
-  const isDark = !document.body.classList.contains('dark-theme');
-  setTheme(isDark);
-  chrome.storage.local.set({ theme: isDark ? 'dark' : 'light' });
-};
+// Reset transform on window focus to prevent stuck states
+window.addEventListener('focus', resetThemeToggleTransform);
+
+// Add CSS animations for the theme toggle
+const themeToggleStyle = document.createElement('style');
+themeToggleStyle.textContent = `
+  #theme-toggle {
+    position: absolute !important;
+    top: 8px !important;
+    left: 8px !important;
+    z-index: 10001 !important;
+    transform-origin: center !important;
+    will-change: transform !important;
+  }
   
-  themeToggle.onmouseout = function() {
-    themeToggle.style.transform = 'scale(1)';
-  };
+  #theme-toggle.animating {
+    pointer-events: none;
+  }
   
-  document.body.appendChild(themeToggle);
+  #theme-toggle {
+    font-size: 18px !important;
+    line-height: 1 !important;
+    text-align: center !important;
+    vertical-align: middle !important;
+  }
   
-  // Load saved theme
-  chrome.storage.local.get({ theme: 'light' }, (result) => {
-    setTheme(result.theme === 'dark');
-  });
+  /* Ensure emojis are always visible */
+  #theme-toggle::before {
+    display: none !important;
+  }
+  
+  @keyframes iconSlideUp {
+    0% { transform: translateY(0) scale(1); opacity: 1; }
+    50% { transform: translateY(-20px) scale(0.8); opacity: 0.5; }
+    100% { transform: translateY(-40px) scale(0.6); opacity: 0; }
+  }
+  
+  @keyframes iconSlideDown {
+    0% { transform: translateY(-40px) scale(0.6); opacity: 0; }
+    50% { transform: translateY(-20px) scale(0.8); opacity: 0.5; }
+    100% { transform: translateY(0) scale(1); opacity: 1; }
+  }
+  
+  #theme-toggle.animating::before {
+    content: attr(data-icon);
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    animation: iconSlideUp 0.3s ease-out forwards;
+  }
+  
+  /* Prevent positioning glitches */
+  #theme-toggle, #history-icon {
+    backface-visibility: hidden !important;
+    -webkit-backface-visibility: hidden !important;
+    perspective: 1000px !important;
+    -webkit-perspective: 1000px !important;
+  }
+`;
+
+document.head.appendChild(themeToggleStyle);
+document.body.appendChild(themeToggle);
+
+// Load saved theme
+chrome.storage.local.get({ theme: 'light' }, (result) => {
+  setTheme(result.theme === 'dark');
+});
+
+// Theme toggle positioning is now handled by CSS
   const summarizeBtn = document.getElementById('summarizeBtn');
   const downloadBtn = document.getElementById('downloadBtn');
   const summaryDiv = document.getElementById('summary');
   const historyIcon = document.getElementById('history-icon');
   if (historyIcon) {
   historyIcon.style.cssText = [
-    'position: fixed',
+    'position: absolute',
     'top: 8px',
     'right: 8px', 
     'z-index: 10001',
     'background: transparent',
-    'border: 1px solid #e2e8f0',
-    'border-radius: 8px',
+    'border: none',
+    'border-radius: 0',
     'width: 32px',
     'height: 32px',
     'display: flex',
@@ -224,18 +403,19 @@ themeToggle.onclick = () => {
     'justify-content: center',
     'font-size: 16px',
     'cursor: pointer',
-    'transition: all 0.2s ease',
-    'box-shadow: 0 2px 4px rgba(0,0,0,0.1)',
-    'color: #374151'
+    'transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+    'box-shadow: none',
+    'color: #374151',
+    'overflow: hidden'
   ].join(';') + ';';
   const updateHistoryIconTheme = () => {
     if (document.body.classList.contains('dark-theme')) {
       historyIcon.style.background = 'transparent';
-      historyIcon.style.borderColor = '#27272a';
+      historyIcon.style.border = 'none';
       historyIcon.style.color = '#f1f5f9';
     } else {
       historyIcon.style.background = 'transparent';
-      historyIcon.style.borderColor = '#e2e8f0';
+      historyIcon.style.border = 'none';
       historyIcon.style.color = '#374151';
     }
   };
@@ -246,6 +426,25 @@ themeToggle.onclick = () => {
     attributes: true, 
     attributeFilter: ['class'] 
   });
+  
+  // Enhanced hover effects for history icon
+  historyIcon.onmouseover = function() {
+    historyIcon.style.transform = 'scale(1.1)';
+    historyIcon.style.boxShadow = 'none';
+  };
+  
+  historyIcon.onmouseout = function() {
+    historyIcon.style.transform = 'scale(1)';
+    historyIcon.style.boxShadow = 'none';
+  };
+  
+  historyIcon.onclick = function() {
+    // Add click animation
+    historyIcon.style.transform = 'scale(0.95)';
+    setTimeout(() => {
+      historyIcon.style.transform = 'scale(1)';
+    }, 150);
+  };
 }
   let projectPaper = '';
   let historyOverlay = null;
@@ -506,7 +705,7 @@ themeToggle.onclick = () => {
       background: var(--modal-bg);
       border-radius: 18px;
       box-shadow: 0 8px 40px rgba(0,0,0,0.18);
-      width: 420px;
+      width: 380px;
       max-width: 98vw;
       margin-top: 40px;
       animation: slideUp 0.3s ease-out;
@@ -595,6 +794,17 @@ modal.appendChild(header);
     if (document.getElementById('history-icon')) {
       document.getElementById('history-icon').style.display = 'none';
     }
+    
+    // Add CSS to ensure proper hiding
+    const hideIconsStyle = document.createElement('style');
+    hideIconsStyle.textContent = `
+      .history-modal-open #theme-toggle,
+      .history-modal-open #history-icon {
+        display: none !important;
+      }
+    `;
+    document.head.appendChild(hideIconsStyle);
+    document.body.classList.add('history-modal-open');
     const style = document.createElement('style');
     style.textContent = `
       @keyframes fadeIn {
@@ -637,13 +847,24 @@ modal.appendChild(header);
         historyOverlay.remove();
         historyOverlay = null;
         document.head.removeChild(style);
-        // Show theme toggle and history icon again
-        if (document.getElementById('theme-toggle')) {
-          document.getElementById('theme-toggle').style.display = '';
-        }
-        if (document.getElementById('history-icon')) {
-          document.getElementById('history-icon').style.display = '';
-        }
+                 // Show theme toggle and history icon again
+         document.body.classList.remove('history-modal-open');
+         if (document.getElementById('theme-toggle')) {
+           document.getElementById('theme-toggle').style.display = '';
+           document.getElementById('theme-toggle').style.transform = '';
+         }
+         if (document.getElementById('history-icon')) {
+           document.getElementById('history-icon').style.display = '';
+           document.getElementById('history-icon').style.transform = '';
+         }
+         
+         // Ensure main container is properly positioned
+         const mainContainer = document.getElementById('main');
+         if (mainContainer) {
+           mainContainer.style.transform = '';
+           mainContainer.style.left = '';
+           mainContainer.style.right = '';
+         }
       }, 200);
     }
   }
@@ -754,7 +975,7 @@ modal.appendChild(header);
     <div style="margin-bottom: 12px;">
       <div style="display: flex; align-items: center; justify-content: space-between;">
         <div style="display: flex; align-items: center;">
-          <img src="icons/icon16.png" alt="Repo" style="width:18px; height:18px; margin-right: 10px; border-radius: 4px;">
+          <img src="../icons/icon16.png" alt="Repo" style="width:18px; height:18px; margin-right: 10px; border-radius: 4px;">
           <a href="${item.url}" target="_blank" style="font-weight: 700; color: var(--modal-title); text-decoration: none; font-size: 12px;">
             ${item.owner}/${item.repo}
           </a>
@@ -955,7 +1176,7 @@ function createFavoriteHistoryItem(item, index) {
     <div style="margin-bottom: 12px;">
       <div style="display: flex; align-items: center; justify-content: space-between;">
         <div style="display: flex; align-items: center;">
-          <img src="icons/icon16.png" alt="Repo" style="width:18px; height:18px; margin-right: 10px; border-radius: 4px;">
+          <img src="../icons/icon16.png" alt="Repo" style="width:18px; height:18px; margin-right: 10px; border-radius: 4px;">
           <a href="${item.url}" target="_blank" style="font-weight: 700; color: var(--modal-title); text-decoration: none; font-size: 12px;">
             ${item.owner}/${item.repo}
           </a>

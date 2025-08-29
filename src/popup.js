@@ -44,9 +44,156 @@
       --tab-inactive-bg: transparent;
       --tab-inactive-color: #a3a3a3;
     }
+
+    /* Global overlay styles */
+    .overlay-open {
+      overflow: hidden;
+    }
+    
+    .overlay-open #theme-toggle,
+    .overlay-open #history-icon {
+      display: none !important;
+      visibility: hidden !important;
+    }
+
+    /* Tree overlay specific styles */
+    .tree-modal-overlay {
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      background: rgba(0, 0, 0, 0.7) !important;
+      backdrop-filter: blur(5px) !important;
+      z-index: 999999 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      padding: 20px !important;
+      box-sizing: border-box !important;
+    }
+
+    .tree-modal {
+      background: var(--modal-bg) !important;
+      color: var(--modal-text) !important;
+      border: 1px solid var(--modal-border) !important;
+      border-radius: 12px !important;
+      width: 90% !important;
+      max-width: 700px !important;
+      max-height: 85vh !important;
+      position: relative !important;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3) !important;
+      display: flex !important;
+      flex-direction: column !important;
+      overflow: hidden !important;
+    }
+
+    .tree-modal-header {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      padding: 20px 24px 16px 24px !important;
+      border-bottom: 1px solid var(--modal-border) !important;
+      flex-shrink: 0 !important;
+    }
+
+    .tree-modal-title {
+      margin: 0 !important;
+      color: var(--modal-title) !important;
+      font-size: 18px !important;
+      font-weight: 600 !important;
+    }
+
+    .tree-modal-close {
+      background: none !important;
+      border: none !important;
+      color: var(--modal-close) !important;
+      font-size: 20px !important;
+      cursor: pointer !important;
+      padding: 8px 12px !important;
+      border-radius: 6px !important;
+      transition: all 0.2s !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      width: 36px !important;
+      height: 36px !important;
+      min-width: 36px !important;
+      min-height: 36px !important;
+    }
+
+    .tree-modal-close:hover {
+      background: var(--modal-hover) !important;
+      color: var(--modal-text) !important;
+    }
+
+    .tree-modal-content {
+      flex: 1 !important;
+      overflow-y: auto !important;
+      padding: 20px 24px !important;
+      min-height: 0 !important;
+    }
+
+    .repo-tree {
+      list-style: none !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+    }
+    
+    .repo-tree li {
+      background: var(--history-item-bg) !important;
+      margin: 8px 0 !important;
+      border-radius: 8px !important;
+      padding: 10px 12px !important;
+      border: 1px solid var(--history-item-border) !important;
+      transition: all 0.2s ease !important;
+      color: var(--history-item-text) !important;
+    }
+    
+    .repo-tree li:hover {
+      transform: translateY(-1px) !important;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+    }
+
+    .subtree {
+      list-style: none !important;
+      padding-left: 20px !important;
+      margin: 8px 0 !important;
+    }
+
+    .directory, .file {
+      display: block !important;
+      padding: 6px 10px !important;
+      border-radius: 6px !important;
+      margin: 2px 0 !important;
+      cursor: default !important;
+      transition: background-color 0.2s !important;
+      font-size: 14px !important;
+      line-height: 1.4 !important;
+    }
+
+    .directory:hover, .file:hover {
+      background-color: var(--modal-hover) !important;
+    }
+
+    .tree-loading, .tree-error {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      padding: 60px 20px !important;
+      font-size: 14px !important;
+      text-align: center !important;
+      color: var(--modal-text) !important;
+    }
+
+    .tree-error {
+      color: #ef4444 !important;
+    }
   `;
   document.head.appendChild(style);
 })();
+
 // Inject theme CSS at the very top
 const themeStyle = document.createElement('style');
 themeStyle.textContent = `
@@ -201,6 +348,7 @@ body.dark-theme #summary {
 }
 `;
 document.head.appendChild(themeStyle);
+
 document.addEventListener('DOMContentLoaded', function() {
 // THEME TOGGLE UI - Original positioning with improved animations
 const themeToggle = document.createElement('button');
@@ -543,20 +691,7 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
             projectPaper = data.project_paper;
             downloadBtn.style.display = 'block';
             clearSessionBtn.style.display = 'block';
-            
-            // Store complete response including tree data
-            chrome.storage.local.set({ 
-              summaryStatus: 'done', 
-              summaryResult: {
-                summary: data.summary,
-                project_paper: data.project_paper,
-                tree_data: data.tree_data,
-                owner: data.owner,
-                repo: data.repo,
-                description: data.description
-              }, 
-              summaryTab: tabs[0].url 
-            });
+            chrome.storage.local.set({ summaryStatus: 'done', summaryResult: data, summaryTab: tabs[0].url });
             const now = Date.now();
             const historyItem = {
               url: tabs[0].url,
@@ -631,6 +766,7 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
       clearSessionBtn.style.display = 'none';
     });
   });
+
   function trackVisitedRepo(url) {
     if (!url.includes('github.com')) return;
     const match = url.match(/^https:\/\/github\.com\/([^\/]+)\/([^\/]+)/);
@@ -779,24 +915,10 @@ modal.appendChild(header);
     }
     historyOverlay.appendChild(modal);
     document.body.appendChild(historyOverlay);
-    // Hide theme toggle and history icon when history modal is open
-    if (document.getElementById('theme-toggle')) {
-      document.getElementById('theme-toggle').style.display = 'none';
-    }
-    if (document.getElementById('history-icon')) {
-      document.getElementById('history-icon').style.display = 'none';
-    }
     
-    // Add CSS to ensure proper hiding
-    const hideIconsStyle = document.createElement('style');
-    hideIconsStyle.textContent = `
-      .history-modal-open #theme-toggle,
-      .history-modal-open #history-icon {
-        display: none !important;
-      }
-    `;
-    document.head.appendChild(hideIconsStyle);
-    document.body.classList.add('history-modal-open');
+    // Add overlay-open class to hide theme toggle and history icon
+    document.body.classList.add('overlay-open');
+    
     const style = document.createElement('style');
     style.textContent = `
       @keyframes fadeIn {
@@ -836,27 +958,13 @@ modal.appendChild(header);
       `;
       document.head.appendChild(style);
       setTimeout(() => {
-        historyOverlay.remove();
-        historyOverlay = null;
+        if (historyOverlay) {
+          historyOverlay.remove();
+          historyOverlay = null;
+        }
         document.head.removeChild(style);
-                 // Show theme toggle and history icon again
-         document.body.classList.remove('history-modal-open');
-         if (document.getElementById('theme-toggle')) {
-           document.getElementById('theme-toggle').style.display = '';
-           document.getElementById('theme-toggle').style.transform = '';
-         }
-         if (document.getElementById('history-icon')) {
-           document.getElementById('history-icon').style.display = '';
-           document.getElementById('history-icon').style.transform = '';
-         }
-         
-         // Ensure main container is properly positioned
-         const mainContainer = document.getElementById('main');
-         if (mainContainer) {
-           mainContainer.style.transform = '';
-           mainContainer.style.left = '';
-           mainContainer.style.right = '';
-         }
+        // Remove overlay-open class to show icons again
+        document.body.classList.remove('overlay-open');
       }, 200);
     }
   }
@@ -1011,57 +1119,6 @@ chrome.storage.local.get({ favoriteRepos: [] }, (result) => {
     favBtn.innerHTML = '<span class="fav-star" style="font-size: 15px;">☆</span> <span>Add to Favorites</span>';
     favBtn.style.background = 'none';
   }
-  // Add dark theme CSS
-  const darkStyle = document.createElement('style');
-  darkStyle.textContent = `
-    body.dark-theme {
-      background: #18181b !important;
-      color: #f1f5f9 !important;
-    }
-    body.dark-theme #popup, body.dark-theme .history-modal, body.dark-theme .analyzed-btn-row, body.dark-theme .favorite-btn, body.dark-theme .remove-fav-btn {
-      background: #23232a !important;
-      color: #f1f5f9 !important;
-      border-color: #27272a !important;
-    }
-    body.dark-theme .status-indicator.success { color: #22d3ee; }
-    body.dark-theme .status-indicator.error { color: #f87171; }
-    body.dark-theme .status-indicator.loading { color: #fbbf24; }
-    body.dark-theme .status-indicator.info { color: #a3e635; }
-    body.dark-theme button, body.dark-theme .tab-btn, body.dark-theme .favorite-btn {
-    
-      color: #f1f5f9 !important;
-      border-color: #27272a !important;
-    }
-    body.dark-theme input, body.dark-theme textarea {
-      background: #23232a !important;
-      color: #f1f5f9 !important;
-      border-color: #27272a !important;
-    }
-    body.dark-theme .history-modal {
-      box-shadow: 0 8px 40px rgba(0,0,0,0.45) !important;
-    }
-    body.dark-theme .analyzed-btn-row button {
-      background: #334155 !important;
-      color: #f1f5f9 !important;
-    }
-    body.dark-theme .favorite-btn {
-      background: #23232a !important;
-      color: #fbbf24 !important;
-    }
-    body.dark-theme .remove-fav-btn {
-      color: #f87171 !important;
-    }
-    body.dark-theme .tab-btn[aria-selected="true"] {
-      background: #18181b !important;
-      color: #a3e635 !important;
-    }
-    body.dark-theme #summary {
-      background: #23232a !important;
-      color: #f1f5f9 !important;
-      border-color: #27272a !important;
-    }
-  `;
-  document.head.appendChild(darkStyle);
 });
 
 favBtn.onclick = (e) => {
@@ -1269,232 +1326,152 @@ function createFavoriteHistoryItem(item, index) {
       if (errorType === 'network-error') icon = '🌐';
       else if (errorType === 'api-error') icon = '🤖';
       else if (errorType === 'extraction-error') icon = '📦';
-      else icon = '❌';
+      else icon = '⌘';
     } else if (type === 'success') {
-      // Use clickable branch icon that opens tree view
-      icon = `<img src="../icons/branch.png" 
-                   alt="View Repository Tree" 
-                   title="Click to view Repository Tree"
-                   class="clickable-branch-icon"
-                   style="width:18px;height:18px;margin-right:12px;border-radius:4px;cursor:pointer">`;
-      // Add click handler after a small delay to ensure element exists
-      setTimeout(() => {
-        const branchIcon = document.querySelector('.clickable-branch-icon');
-        if (branchIcon) {
-          branchIcon.onclick = () => showTreeOverlay();
-        }
-      }, 100);
+      icon = `<img src="../icons/branch.png" alt="View Structure" title="Get Repository Tree" style="width: 16px; height: 16px; cursor: pointer;" class="tree-trigger" onclick="showTreeOverlay()">`;
     } else if (type === 'info') {
       icon = 'ℹ️';
     }
-
-    // Insert the icon HTML inside the status-indicator so styling remains consistent
-    summaryDiv.innerHTML = `<span class="status-indicator ${type}">${icon}</span> ${message}`;
+    
+    if (type === 'error') {
+      summaryDiv.innerHTML = `<span class="status-indicator ${type}">${icon}</span> ${message}`;
+    } else {
+      summaryDiv.innerHTML = `<span class="status-indicator ${type}">${icon}</span> ${message}`;
+      
+      // Add click handler for tree trigger if it's a success message
+      if (type === 'success') {
+        const treeTrigger = summaryDiv.querySelector('.tree-trigger');
+        if (treeTrigger) {
+          treeTrigger.onclick = showTreeOverlay;
+        }
+      }
+    }
     summaryDiv.style.display = 'block';
   }
 
+  // Fixed showTreeOverlay function with proper overlay management
   function showTreeOverlay() {
-    // Hide theme toggle and history icon when tree modal is open
-    if (document.getElementById('theme-toggle')) {
-      document.getElementById('theme-toggle').style.display = 'none';
-    }
-    if (document.getElementById('history-icon')) {
-      document.getElementById('history-icon').style.display = 'none';
-    }
+    console.log('Showing tree overlay...');
     
-    // Add class to body to ensure icons stay hidden
-    document.body.classList.add('tree-modal-open');
-    
-    chrome.tabs.query({active: true, currentWindow: true}, async (tabs) => {
-      try {
-        const url = new URL(tabs[0].url);
-        const [_, owner, repo] = url.pathname.split('/');
-        
-        if (!owner || !repo) {
-          showMessage('Could not determine repository details', 'error');
-          return;
-        }
-
-        // Create and style the overlay
-        const overlay = document.createElement('div');
-        overlay.style.cssText = `
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          background: rgba(0,0,0,0.7);
-          z-index: 10000;
-          backdrop-filter: blur(4px);
-        `;
-
-        const modal = document.createElement('div');
-        modal.style.cssText = `
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          width: 90%;
-          max-width: 340px;
-          max-height: 80vh;
-          background: ${document.body.classList.contains('dark-theme') ? '#23232a' : '#fff'};
-          border-radius: 12px;
-          padding: 20px;
-          box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-          display: flex;
-          flex-direction: column;
-          overflow: hidden;
-        `;
-
-        const header = document.createElement('div');
-        header.style.cssText = `
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin-bottom: 16px;
-          padding-bottom: 12px;
-          border-bottom: 1px solid ${document.body.classList.contains('dark-theme') ? '#333' : '#eee'};
-        `;
-
-        const title = document.createElement('h3');
-        title.textContent = 'Repository Structure';
-        title.style.cssText = `
-          margin: 0;
-          color: ${document.body.classList.contains('dark-theme') ? '#fff' : '#333'};
-          font-size: 16px;
-          font-weight: 600;
-        `;
-
-        const closeBtn = document.createElement('button');
-        closeBtn.innerHTML = '✖';
-        closeBtn.style.cssText = `
-          background: none;
-          border: none;
-          color: ${document.body.classList.contains('dark-theme') ? '#fff' : '#666'};
-          font-size: 18px;
-          cursor: pointer;
-          padding: 4px 8px;
-          border-radius: 4px;
-        `;
-        closeBtn.onclick = () => {
-          overlay.remove();
-          // Show theme toggle and history icon again when tree modal is closed
-          if (document.getElementById('theme-toggle')) {
-            document.getElementById('theme-toggle').style.display = '';
-          }
-          if (document.getElementById('history-icon')) {
-            document.getElementById('history-icon').style.display = '';
-          }
-          // Remove the class that keeps icons hidden
-          document.body.classList.remove('tree-modal-open');
-        };
-
-        const content = document.createElement('div');
-        content.style.cssText = `
-          flex: 1;
-          overflow-y: auto;
-          padding-right: 8px;
-        `;
-
-        // Show loading state
-        content.innerHTML = '<div style="text-align: center; padding: 20px;">Loading repository structure...</div>';
-
-        header.appendChild(title);
-        header.appendChild(closeBtn);
-        modal.appendChild(header);
-        modal.appendChild(content);
-        overlay.appendChild(modal);
-        document.body.appendChild(overlay);
-
-        // Get repository tree data from chrome storage
-        chrome.storage.local.get(['summaryResult'], async (result) => {
-          if (!result.summaryResult || !result.summaryResult.tree_data) {
-            content.innerHTML = `
-              <div style="color: ${document.body.classList.contains('dark-theme') ? '#fca5a5' : '#dc2626'}; 
-                          padding: 20px; text-align: center;">
-                Repository structure not available. Please try analyzing the repository again.
-              </div>`;
-            return;
-          }
-
-          const treeData = result.summaryResult.tree_data;
-          
-          function createTreeItem(node, level) {
-            const div = document.createElement('div');
-            div.className = 'tree-item';
-            div.dataset.type = node.type;
-            div.dataset.name = node.name;
+    // Get current repo info
+    chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+      if (tabs[0]) {
+        chrome.tabs.sendMessage(tabs[0].id, { action: "extractRepoInfo" }, async (repoInfo) => {
+          if (repoInfo && repoInfo.owner && repoInfo.repo) {
+            console.log('Got repo info:', repoInfo);
             
-            // Set styles without inline handlers
-            const indent = '&nbsp;'.repeat(level * 2);
-            const isFolder = node.type === 'directory' || node.type === 'tree';
-            const icon = isFolder ? '📁' : '📄';
+            // Add overlay-open class to hide theme toggle and other icons
+            document.body.classList.add('overlay-open');
             
-            div.style.paddingLeft = `${level * 16}px`;
-            div.style.color = document.body.classList.contains('dark-theme') ? '#fff' : '#333';
-            div.style.cursor = 'pointer';
-            
-            div.innerHTML = `${indent}${icon} ${node.name}`;
-            
-            // Add event listeners properly
-            div.addEventListener('mouseover', function() {
-              this.style.backgroundColor = document.body.classList.contains('dark-theme') ? '#2d2d2d' : '#f5f5f5';
-            });
-            
-            div.addEventListener('mouseout', function() {
-              this.style.backgroundColor = 'transparent';
-            });
-            
-            return div;
-          }
+            // Create overlay container with proper z-index
+            const overlayContainer = document.createElement('div');
+            overlayContainer.className = 'tree-modal-overlay';
+            overlayContainer.innerHTML = `
+              <div class="tree-modal">
+                <div class="tree-modal-header">
+                  <h2 class="tree-modal-title">Repository Structure</h2>
+                  <button class="tree-modal-close" aria-label="Close">✕</button>
+                </div>
+                <div class="tree-modal-content">
+                  <div class="tree-loading">
+                    <span style="margin-right: 10px;">⏳</span> Loading repository structure...
+                  </div>
+                </div>
+              </div>
+            `;
 
-          function buildTreeDom(node, level = 0, container) {
-            const item = createTreeItem(node, level);
-            container.appendChild(item);
+            // Add close functionality
+            const closeModal = () => {
+              if (overlayContainer) {
+                document.body.removeChild(overlayContainer);
+                document.body.classList.remove('overlay-open');
+              }
+            };
+
+            const closeBtn = overlayContainer.querySelector('.tree-modal-close');
+            closeBtn.onclick = closeModal;
             
-            if (node.children && node.children.length > 0) {
-              // Sort children: folders first, then files
-              node.children.sort((a, b) => {
-                const aIsFolder = a.type === 'directory' || a.type === 'tree';
-                const bIsFolder = b.type === 'directory' || b.type === 'tree';
-                if (aIsFolder === bIsFolder) return a.name.localeCompare(b.name);
-                return aIsFolder ? -1 : 1;
-              });
+            overlayContainer.onclick = (e) => {
+              if (e.target === overlayContainer) {
+                closeModal();
+              }
+            };
+
+            // Add to body
+            document.body.appendChild(overlayContainer);
+
+            try {
+              // Fetch repository structure
+              console.log('Fetching repo structure...');
+              const treeResponse = await fetch(`http://localhost:8000/tree/${repoInfo.owner}/${repoInfo.repo}`);
+              const data = await treeResponse.json();
+
+              console.log('Got tree data:', data);
+
+              const contentContainer = overlayContainer.querySelector('.tree-modal-content');
               
-              // Recursively build children
-              node.children.forEach(child => {
-                buildTreeDom(child, level + 1, container);
-              });
+              if (data.error) {
+                contentContainer.innerHTML = `
+                  <div class="tree-error">
+                    <span style="margin-right: 10px;">⚠</span> ${data.error}
+                  </div>
+                `;
+                return;
+              }
+
+              // Build and display the tree
+              contentContainer.innerHTML = buildTreeHtml(data.tree);
+
+            } catch (error) {
+              console.error('Error showing repository tree:', error);
+              
+              const contentContainer = overlayContainer.querySelector('.tree-modal-content');
+              contentContainer.innerHTML = `
+                <div class="tree-error">
+                  <span style="margin-right: 10px;">⚠</span> Failed to load repository structure
+                </div>
+              `;
             }
+          } else {
+            console.error('No repo info found');
           }
-
-          // Create container for tree
-          const treeContainer = document.createElement('div');
-          treeContainer.style.cssText = `
-            font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
-            font-size: 13px;
-            line-height: 1.6;
-          `;
-
-          // Build tree DOM
-          buildTreeDom(treeData, 0, treeContainer);
-          
-          // Clear and append to content
-          content.innerHTML = '';
-          content.appendChild(treeContainer);
-
-          // Add scrollbar styling
-          content.style.cssText += `
-            scrollbar-width: thin;
-            scrollbar-color: ${document.body.classList.contains('dark-theme') ? '#666 #333' : '#ccc #f5f5f5'};
-          `;
         });
-
-      } catch (error) {
-        console.error('Error fetching repository tree:', error);
-        showMessage('Failed to fetch repository structure', 'error');
       }
     });
+  }
+
+  // Tree building function
+  function buildTreeHtml(node) {
+    if (!node) return '';
+    
+    let html = '<ul class="repo-tree">';
+    
+    function renderNode(node) {
+        const isDirectory = node.type === 'directory';
+        const icon = node.icon || (isDirectory ? '📁' : '📄');
+        
+        let nodeHtml = `
+            <li>
+                <span class="${isDirectory ? 'directory' : 'file'}">
+                    ${icon} ${node.name}
+                </span>
+        `;
+        
+        if (node.children && node.children.length > 0) {
+            nodeHtml += '<ul class="subtree">';
+            node.children.forEach(child => {
+                nodeHtml += renderNode(child);
+            });
+            nodeHtml += '</ul>';
+        }
+        
+        nodeHtml += '</li>';
+        return nodeHtml;
+    }
+    
+    html += renderNode(node);
+    html += '</ul>';
+    return html;
   }
 
   // New function for GitHub-specific error with better styling
@@ -1562,7 +1539,7 @@ function createFavoriteHistoryItem(item, index) {
     summaryDiv.className = 'error';
     summaryDiv.innerHTML = `
       <div class="error-content">
-        <div class="error-icon">⏰</div>
+        <div class="error-icon">Ⰰ</div>
         <div class="error-text">
           <h3 class="error-title">Extraction Timed Out</h3>
           <p class="error-description">The repository analysis took too long. This often happens with large repositories. Please ensure the page is fully loaded and try again.</p>
@@ -1590,7 +1567,6 @@ function createFavoriteHistoryItem(item, index) {
   function retryExtraction() {
     summarizeBtn.click();
   }
-  // All showMessage calls are now handled in their respective try/catch blocks with correct variable scope
 
   function formatTimestamp(timestamp) {
     const now = Date.now();
@@ -1608,3 +1584,9 @@ function createFavoriteHistoryItem(item, index) {
   downloadBtn.style.transform = 'translateY(10px)';
   downloadBtn.style.transition = 'all 0.3s ease';
 });
+
+// Make showTreeOverlay globally available
+window.showTreeOverlay = function() {
+  const event = new CustomEvent('showTreeOverlay');
+  document.dispatchEvent(event);
+};

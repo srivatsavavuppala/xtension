@@ -55,9 +55,18 @@ A powerful browser extension that provides AI-powered analysis and visualization
 5. View the beautiful tree visualization and summary
 
 ### Tree Visualization
-- **Main View**: Shows both tree structure and AI summary side by side
-- **Tree-Only View**: Click "View Tree Only" for a focused tree display
-- **Interactive Elements**: Hover over tree nodes for enhanced visibility
+- **Repository Tree View**: Click the tree icon to open an elegant modal displaying the complete repository structure
+- **Expandable/Collapsible**: Folders can be expanded or collapsed to manage complex repository structures
+- **Material Design Icons**: Modern, intuitive icons for files and folders
+- **Interactive Elements**: 
+  - Enhanced hover states with optimized contrast
+  - Clear visual hierarchy with proper indentation
+  - Smooth animations for expanding/collapsing folders
+- **Theme-Aware**: Fully supports both light and dark modes with proper contrast
+- **Modal Interface**: 
+  - Clean, organized display of repository structure
+  - Easy-to-read headers with theme-aware styling
+  - Quick close with escape key or click outside
 - **Download Report**: Get a comprehensive project report with tree structure
 
 ### History Management
@@ -91,13 +100,23 @@ A powerful browser extension that provides AI-powered analysis and visualization
 - **Monospace Font**: Professional code-like appearance
 - **Connector Lines**: Clear hierarchical relationships
 - **Color Coding**: Different colors for files vs directories
-- **Hover Effects**: Interactive feedback on tree nodes
+- **Hover Effects**: Enhanced visibility with optimized contrast
+- **Material Icons**: Modern file and folder icons for better visual hierarchy
+- **Interactive Elements**: Smooth hover states and transitions
 
 ### Theme System
 - **Light Theme**: Clean, professional appearance
-- **Dark Theme**: Modern, eye-friendly interface
+- **Dark Theme**: Optimized contrast and readability
 - **Automatic Switching**: Detects system theme preference
 - **Smooth Transitions**: Beautiful theme change animations
+- **Consistent Styling**: Unified dark mode experience across all components
+
+### History Display
+- **Visit Counter**: Shows number of times a repository was visited
+- **Enhanced Link Icons**: Larger, more visible link indicators
+- **Optimized Spacing**: Better visual hierarchy with proper gaps
+- **Dark Mode Support**: High contrast text and icons in dark theme
+- **Repository Structure**: Clean header styling with theme-aware backgrounds
 
 ### Responsive Design
 - **Mobile Optimized**: Works perfectly on small screens

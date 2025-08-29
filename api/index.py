@@ -74,19 +74,26 @@ class handler(BaseHTTPRequestHandler):
             
             # Create a formatted file structure string
             structure_text = "Repository Structure:\n"
-            for file in data.get('structure', []):
-                prefix = "📁 " if file['type'] == "tree" else "📄 "
-                structure_text += f"{prefix}{file['path']}\n"
+            if data.get('structure') and len(data.get('structure', [])) > 0:
+                for file in data.get('structure', []):
+                    prefix = "📁 " if file['type'] == "tree" else "📄 "
+                    structure_text += f"{prefix}{file['path']}\n"
+            else:
+                structure_text = "Repository Structure:\n📁 No detailed file structure available\n📄 Repository content will be analyzed based on available information\n"
 
-            # Generate summary
+            # Generate summary with better context handling
             summary_prompt = (
                 f"Summarize the following GitHub repository in a concise paragraph. "
                 f"Focus on the project's purpose, main features, and organization. "
-                f"Consider both the README content and the file structure.\n\n"
+                f"Use the available information to provide the best possible summary.\n\n"
                 f"Repository: {data['owner']}/{data['repo']}\n"
                 f"Description: {data['description']}\n\n"
-                f"File Structure:\n{structure_text}\n\n"
-                f"README: {data.get('readme', '')[:2000]}"
+                f"{structure_text}\n\n"
+                f"README: {data.get('readme', '')[:2000] if data.get('readme') else 'No README content available'}\n\n"
+                f"Instructions: Based on the repository name, owner, description, and any available content, "
+                f"provide a comprehensive summary that explains what this project does, its main purpose, "
+                f"and key characteristics. If specific technical details aren't available, make reasonable "
+                f"inferences based on the repository name and description."
             )
             
             summary_completion = client.chat.completions.create(
@@ -102,8 +109,8 @@ class handler(BaseHTTPRequestHandler):
                 f"Include these sections:\n"
                 f"- Project Name and Purpose\n"
                 f"- Main Features\n"
-                f"- Technical Architecture (analyzing the file structure)\n"
-                f"- Key Technologies Used (inferred from files)\n"
+                f"- Technical Architecture (analyzing available information)\n"
+                f"- Key Technologies Used (inferred from repository context)\n"
                 f"- How to Use or Run the Project\n"
                 f"- Contribution Guidelines\n"
                 f"- License\n\n"
@@ -111,8 +118,12 @@ class handler(BaseHTTPRequestHandler):
                 f"Owner: {data['owner']}\n"
                 f"Repo: {data['repo']}\n"
                 f"Description: {data['description']}\n\n"
-                f"File Structure:\n{structure_text}\n\n"
-                f"README: {data.get('readme', '')[:4000]}"
+                f"{structure_text}\n\n"
+                f"README: {data.get('readme', '')[:4000] if data.get('readme') else 'No README content available'}\n\n"
+                f"Instructions: Create a comprehensive project overview based on the available information. "
+                f"If specific technical details aren't available, make reasonable inferences based on the "
+                f"repository name, description, and common patterns in software development. "
+                f"Focus on providing valuable insights that would help developers understand and use this project."
             )
             
             paper_completion = client.chat.completions.create(

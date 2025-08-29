@@ -7,4 +7,3 @@ mangum
 pydantic
 requests
 groq
-os

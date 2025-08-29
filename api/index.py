@@ -133,6 +133,23 @@ class handler(BaseHTTPRequestHandler):
             )
             project_paper = paper_completion.choices[0].message.content
             
+            # Generate tree data from structure information
+            tree_data = {
+                "name": data['repo'],
+                "type": "directory",
+                "icon": "📁",
+                "children": []
+            }
+            
+            if data.get('structure') and len(data.get('structure', [])) > 0:
+                for file_info in data.get('structure', []):
+                    tree_data["children"].append({
+                        "name": file_info['path'],
+                        "type": file_info['type'],
+                        "icon": "📁" if file_info['type'] == "tree" else "📄",
+                        "children": []
+                    })
+            
             # Send successful response
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
@@ -141,7 +158,11 @@ class handler(BaseHTTPRequestHandler):
             
             response = {
                 "summary": summary,
-                "project_paper": project_paper
+                "project_paper": project_paper,
+                "tree_data": tree_data,
+                "owner": data['owner'],
+                "repo": data['repo'],
+                "description": data['description']
             }
             self.wfile.write(json.dumps(response).encode())
             

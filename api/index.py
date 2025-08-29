@@ -25,9 +25,11 @@ class handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         """Handle CORS preflight requests"""
         self.send_response(200)
+        # More comprehensive CORS headers for Chrome extensions
         self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+        self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS, PUT, DELETE')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin')
+        self.send_header('Access-Control-Max-Age', '86400')  # Cache preflight for 24 hours
         self.end_headers()
     
     def do_GET(self):
@@ -35,17 +37,27 @@ class handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS, PUT, DELETE')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin')
         self.end_headers()
         
         response = {
             "status": "GitHub Repo Summarizer API is running",
-            "version": "1.0"
+            "version": "1.0",
+            "cors": "enabled"
         }
         self.wfile.write(json.dumps(response).encode())
     
     def do_POST(self):
         """Handle POST requests for summarization"""
         try:
+            # Set CORS headers first
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS, PUT, DELETE')
+            self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin')
+            
             # Read request body
             content_length = int(self.headers.get('Content-Length', 0))
             post_data = self.rfile.read(content_length)
@@ -54,21 +66,30 @@ class handler(BaseHTTPRequestHandler):
             try:
                 data = json.loads(post_data.decode('utf-8'))
             except json.JSONDecodeError:
-                self.send_error_response(400, "Invalid JSON")
+                self.end_headers()
+                error_response = {"error": "Invalid JSON"}
+                self.wfile.write(json.dumps(error_response).encode())
                 return
             
             # Validate required fields
             required_fields = ['repo', 'owner', 'description']
             for field in required_fields:
                 if field not in data:
-                    self.send_error_response(400, f"Missing required field: {field}")
+                    self.end_headers()
+                    error_response = {"error": f"Missing required field: {field}"}
+                    self.wfile.write(json.dumps(error_response).encode())
                     return
             
             # Initialize Groq client
             api_key = os.environ.get("API_KEY")
             if not api_key:
-                self.send_error_response(500, "API_KEY environment variable not set")
+                self.end_headers()
+                error_response = {"error": "API_KEY environment variable not set"}
+                self.wfile.write(json.dumps(error_response).encode())
                 return
+            
+            # End headers before sending response body
+            self.end_headers()
             
             client = Groq(api_key=api_key)
             
@@ -171,11 +192,6 @@ class handler(BaseHTTPRequestHandler):
                 tree_data["children"] = sample_structure
             
             # Send successful response
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.end_headers()
-            
             response = {
                 "summary": summary,
                 "project_paper": project_paper,
@@ -187,13 +203,25 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(response).encode())
             
         except Exception as e:
-            self.send_error_response(500, f"Internal server error: {str(e)}")
+            # Make sure headers are sent even on error
+            if not hasattr(self, '_headers_sent'):
+                self.send_response(500)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS, PUT, DELETE')
+                self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin')
+                self.end_headers()
+            
+            error_response = {"error": f"Internal server error: {str(e)}"}
+            self.wfile.write(json.dumps(error_response).encode())
     
     def send_error_response(self, status_code, message):
-        """Send error response with CORS headers"""
+        """Send error response with CORS headers - DEPRECATED, use inline error handling"""
         self.send_response(status_code)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS, PUT, DELETE')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin')
         self.end_headers()
         
         error_response = {"error": message}

@@ -1178,8 +1178,8 @@ btnRow.appendChild(favBtn);
   itemDiv.innerHTML = `
   <div style="display: flex; align-items: center; justify-content: space-between; overflow: hidden;">
     <div style="display: flex; align-items: center;">
-      <div style="background: var(--empty-desc); color: white; padding: 3px 6px; border-radius: 6px; font-size: 9px; font-weight: 600; margin-right: 10px; white-space: nowrap;">
-        🔗${item.visitCount > 1 ? `(${item.visitCount}x)` : ''}
+      <div style="color: var(--tree-file-text); padding: 3px 6px; font-size: 11px; font-weight: 600; margin-right: 10px; white-space: nowrap; display: flex; align-items: center; gap: 4px;">
+        <span style="font-size: 14px;">🔗</span>${item.visitCount > 1 ? `${item.visitCount}x` : ''}
       </div>
       <a href="${item.url}" target="_blank" style="font-weight: 600; color: var(--modal-title); text-decoration: none; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
         ${item.repo}
@@ -1354,88 +1354,83 @@ function createFavoriteHistoryItem(item, index) {
     console.log('Showing tree overlay...');
     
     // Get current repo info
-    chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
-      if (tabs[0]) {
-        chrome.tabs.sendMessage(tabs[0].id, { action: "extractRepoInfo" }, async (repoInfo) => {
-          if (repoInfo && repoInfo.owner && repoInfo.repo) {
-            console.log('Got repo info:', repoInfo);
-            
-            // Add overlay-open class to hide theme toggle and other icons
-            document.body.classList.add('overlay-open');
-            
-            // Create overlay container with proper z-index
-            const overlayContainer = document.createElement('div');
-            overlayContainer.className = 'tree-modal-overlay';
-            overlayContainer.innerHTML = `
-              <div class="tree-modal">
-                <div class="tree-modal-header">
-                  <h2 class="tree-modal-title">Repository Structure</h2>
-                  <button class="tree-modal-close" aria-label="Close">✕</button>
-                </div>
-                <div class="tree-modal-content">
-                  <div class="tree-loading">
-                    <span style="margin-right: 10px;">⏳</span> Loading repository structure...
-                  </div>
-                </div>
-              </div>
-            `;
+    chrome.storage.local.get(['summaryResult'], async (result) => {
+      if (result.summaryResult && result.summaryResult.tree_data) {
+        console.log('Got tree data from storage');
+        
+        // Add overlay-open class to hide theme toggle and other icons
+        document.body.classList.add('overlay-open');
+        
+        // Create overlay container with proper z-index
+        const overlayContainer = document.createElement('div');
+        overlayContainer.className = 'tree-modal-overlay';
+        overlayContainer.innerHTML = `
+          <div class="tree-modal">
+            <div class="tree-modal-header">
+              <h2 class="tree-modal-title">Repository Structure</h2>
+              <button class="tree-modal-close" aria-label="Close">✕</button>
+            </div>
+            <div class="tree-modal-content">
+              ${buildTreeHtml(result.summaryResult.tree_data)}
+            </div>
+          </div>
+        `;
 
-            // Add close functionality
-            const closeModal = () => {
-              if (overlayContainer) {
-                document.body.removeChild(overlayContainer);
-                document.body.classList.remove('overlay-open');
+        // Add close functionality
+        const closeModal = () => {
+          overlayContainer.style.animation = 'fadeOut 0.2s ease-out';
+          const modal = overlayContainer.querySelector('.tree-modal');
+          modal.style.animation = 'modalSlideDown 0.2s ease-out';
+          
+          setTimeout(() => {
+            document.body.removeChild(overlayContainer);
+            document.body.classList.remove('overlay-open');
+          }, 200);
+        };
+
+        const closeBtn = overlayContainer.querySelector('.tree-modal-close');
+        closeBtn.onclick = closeModal;
+        
+        overlayContainer.onclick = (e) => {
+          if (e.target === overlayContainer) {
+            closeModal();
+          }
+        };
+
+        // Add folder expansion functionality
+        const directories = overlayContainer.querySelectorAll('.directory');
+        directories.forEach(dir => {
+          if (!dir.classList.contains('no-children')) {
+            dir.addEventListener('click', (e) => {
+              const li = e.target.closest('li');
+              const subtree = li.querySelector('.subtree');
+              if (subtree) {
+                const isExpanded = subtree.classList.contains('expanded');
+                if (!isExpanded) {
+                  // Expanding
+                  subtree.classList.add('expanded');
+                  dir.classList.add('expanded');
+                  subtree.style.height = subtree.scrollHeight + 'px';
+                } else {
+                  // Collapsing
+                  subtree.style.height = subtree.scrollHeight + 'px';
+                  setTimeout(() => {
+                    subtree.style.height = '0';
+                  }, 0);
+                  subtree.classList.remove('expanded');
+                  dir.classList.remove('expanded');
+                }
               }
-            };
-
-            const closeBtn = overlayContainer.querySelector('.tree-modal-close');
-            closeBtn.onclick = closeModal;
-            
-            overlayContainer.onclick = (e) => {
-              if (e.target === overlayContainer) {
-                closeModal();
-              }
-            };
-
-            // Add to body
-            document.body.appendChild(overlayContainer);
-
-            try {
-              // Fetch repository structure
-              console.log('Fetching repo structure...');
-              const treeResponse = await fetch(`http://localhost:8000/tree/${repoInfo.owner}/${repoInfo.repo}`);
-              const data = await treeResponse.json();
-
-              console.log('Got tree data:', data);
-
-              const contentContainer = overlayContainer.querySelector('.tree-modal-content');
-              
-              if (data.error) {
-                contentContainer.innerHTML = `
-                  <div class="tree-error">
-                    <span style="margin-right: 10px;">⚠</span> ${data.error}
-                  </div>
-                `;
-                return;
-              }
-
-              // Build and display the tree
-              contentContainer.innerHTML = buildTreeHtml(data.tree);
-
-            } catch (error) {
-              console.error('Error showing repository tree:', error);
-              
-              const contentContainer = overlayContainer.querySelector('.tree-modal-content');
-              contentContainer.innerHTML = `
-                <div class="tree-error">
-                  <span style="margin-right: 10px;">⚠</span> Failed to load repository structure
-                </div>
-              `;
-            }
-          } else {
-            console.error('No repo info found');
+            });
           }
         });
+
+        // Add to body with animation
+        document.body.appendChild(overlayContainer);
+        
+      } else {
+        console.error('No tree data found');
+        showMessage('Repository structure not available. Please analyze the repository first.', 'error');
       }
     });
   }
@@ -1446,20 +1441,111 @@ function createFavoriteHistoryItem(item, index) {
     
     let html = '<ul class="repo-tree">';
     
+    function getFileIcon(filename) {
+        const ext = filename.split('.').pop().toLowerCase();
+        let iconName = 'description';
+        let iconClass = 'icon-default';
+
+        switch (ext) {
+            // Programming Languages
+            case 'js':
+                iconName = 'javascript';
+                iconClass = 'icon-js';
+                break;
+            case 'ts':
+                iconName = 'code';
+                iconClass = 'icon-ts';
+                break;
+            case 'py':
+                iconName = 'code';
+                iconClass = 'icon-py';
+                break;
+            case 'html':
+                iconName = 'html';
+                iconClass = 'icon-html';
+                break;
+            case 'css':
+                iconName = 'css';
+                iconClass = 'icon-css';
+                break;
+            case 'json':
+                iconName = 'data_object';
+                iconClass = 'icon-json';
+                break;
+            case 'md':
+                iconName = 'article';
+                iconClass = 'icon-md';
+                break;
+            
+            // Images
+            case 'jpg':
+            case 'jpeg':
+            case 'png':
+            case 'gif':
+            case 'svg':
+            case 'ico':
+                iconName = 'image';
+                iconClass = 'icon-img';
+                break;
+            
+            // Config files
+            case 'yml':
+            case 'yaml':
+            case 'toml':
+            case 'ini':
+            case 'env':
+            case 'config':
+                iconName = 'settings';
+                iconClass = 'icon-config';
+                break;
+            
+            // Git files
+            case 'gitignore':
+            case 'gitattributes':
+                iconName = 'source_control';
+                iconClass = 'icon-git';
+                break;
+            
+            // Lock files
+            case 'lock':
+                iconName = 'lock';
+                iconClass = 'icon-lock';
+                break;
+            
+            default:
+                if (filename.startsWith('.')) {
+                    iconName = 'settings_system_daydream';
+                    iconClass = 'icon-config';
+                }
+        }
+
+        return `<i class="material-icons ${iconClass}">${iconName}</i>`;
+    }
+
     function renderNode(node) {
         const isDirectory = node.type === 'directory';
-        const icon = node.icon || (isDirectory ? '📁' : '📄');
+        const icon = isDirectory ? 
+            '<i class="material-icons">folder</i>' : 
+            getFileIcon(node.name);
+        const hasChildren = node.children && node.children.length > 0;
         
         let nodeHtml = `
             <li>
-                <span class="${isDirectory ? 'directory' : 'file'}">
+                <span class="${isDirectory ? 'directory' : 'file'} ${hasChildren ? '' : 'no-children'}" title="${node.name}">
                     ${icon} ${node.name}
                 </span>
         `;
         
-        if (node.children && node.children.length > 0) {
+        if (hasChildren) {
             nodeHtml += '<ul class="subtree">';
-            node.children.forEach(child => {
+            // Sort directories first, then files
+            const sortedChildren = [...node.children].sort((a, b) => {
+                if (a.type === b.type) {
+                    return a.name.localeCompare(b.name);
+                }
+                return a.type === 'directory' ? -1 : 1;
+            });
+            sortedChildren.forEach(child => {
                 nodeHtml += renderNode(child);
             });
             nodeHtml += '</ul>';

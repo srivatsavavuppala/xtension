@@ -1106,20 +1106,20 @@ btnRow.appendChild(favBtn);
     itemDiv.style.boxShadow = 'none';
   };
   itemDiv.innerHTML = `
-    <div style="display: flex; align-items: center; justify-content: space-between;">
-      <div style="display: flex; align-items: center;">
-        <div style="background: var(--empty-desc); color: white; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; margin-right: 12px;">
-          🔗 VISITED ${item.visitCount > 1 ? `(${item.visitCount}x)` : ''}
-        </div>
-        <a href="${item.url}" target="_blank" style="font-weight: 600; color: var(--modal-title); text-decoration: none; font-size: 15px;">
-          ${item.owner}/${item.repo}
-        </a>
+  <div style="display: flex; align-items: center; justify-content: space-between; overflow: hidden;">
+    <div style="display: flex; align-items: center;">
+      <div style="background: var(--empty-desc); color: white; padding: 3px 6px; border-radius: 6px; font-size: 9px; font-weight: 600; margin-right: 10px; white-space: nowrap;">
+        🔗${item.visitCount > 1 ? `(${item.visitCount}x)` : ''}
       </div>
-      <span style="color: var(--empty-desc); font-size: 11px; background: var(--summary-bg); padding: 3px 6px; border-radius: 4px;">
-        ${formatTimestamp(item.timestamp)}
-      </span>
+      <a href="${item.url}" target="_blank" style="font-weight: 600; color: var(--modal-title); text-decoration: none; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+        ${item.repo}
+      </a>
     </div>
-  `;
+    <span style="color: var(--empty-desc); font-size: 11px; background: var(--summary-bg); padding: 3px 6px; border-radius: 4px; white-space: nowrap;">
+      ${formatTimestamp(item.timestamp)}
+    </span>
+  </div>
+`;
   itemDiv.onclick = () => {
     window.open(item.url, '_blank');
   };

@@ -6,3 +6,5 @@ uvicorn
 mangum
 pydantic
 requests
+groq
+os

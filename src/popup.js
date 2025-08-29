@@ -543,7 +543,20 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
             projectPaper = data.project_paper;
             downloadBtn.style.display = 'block';
             clearSessionBtn.style.display = 'block';
-            chrome.storage.local.set({ summaryStatus: 'done', summaryResult: data, summaryTab: tabs[0].url });
+            
+            // Store complete response including tree data
+            chrome.storage.local.set({ 
+              summaryStatus: 'done', 
+              summaryResult: {
+                summary: data.summary,
+                project_paper: data.project_paper,
+                tree_data: data.tree_data,
+                owner: data.owner,
+                repo: data.repo,
+                description: data.description
+              }, 
+              summaryTab: tabs[0].url 
+            });
             const now = Date.now();
             const historyItem = {
               url: tabs[0].url,
@@ -1258,17 +1271,230 @@ function createFavoriteHistoryItem(item, index) {
       else if (errorType === 'extraction-error') icon = '📦';
       else icon = '❌';
     } else if (type === 'success') {
-      icon = '✅';
+      // Use clickable branch icon that opens tree view
+      icon = `<img src="../icons/branch.png" 
+                   alt="View Repository Tree" 
+                   title="Click to view Repository Tree"
+                   class="clickable-branch-icon"
+                   style="width:18px;height:18px;margin-right:12px;border-radius:4px;cursor:pointer">`;
+      // Add click handler after a small delay to ensure element exists
+      setTimeout(() => {
+        const branchIcon = document.querySelector('.clickable-branch-icon');
+        if (branchIcon) {
+          branchIcon.onclick = () => showTreeOverlay();
+        }
+      }, 100);
     } else if (type === 'info') {
       icon = 'ℹ️';
     }
-    
-    if (type === 'error') {
-      summaryDiv.innerHTML = `<span class="status-indicator ${type}">${icon}</span> ${message}`;
-    } else {
-      summaryDiv.innerHTML = `<span class="status-indicator ${type}">${icon}</span> ${message}`;
-    }
+
+    // Insert the icon HTML inside the status-indicator so styling remains consistent
+    summaryDiv.innerHTML = `<span class="status-indicator ${type}">${icon}</span> ${message}`;
     summaryDiv.style.display = 'block';
+  }
+
+  function showTreeOverlay() {
+    // Hide theme toggle and history icon when tree modal is open
+    if (document.getElementById('theme-toggle')) {
+      document.getElementById('theme-toggle').style.display = 'none';
+    }
+    if (document.getElementById('history-icon')) {
+      document.getElementById('history-icon').style.display = 'none';
+    }
+    
+    // Add class to body to ensure icons stay hidden
+    document.body.classList.add('tree-modal-open');
+    
+    chrome.tabs.query({active: true, currentWindow: true}, async (tabs) => {
+      try {
+        const url = new URL(tabs[0].url);
+        const [_, owner, repo] = url.pathname.split('/');
+        
+        if (!owner || !repo) {
+          showMessage('Could not determine repository details', 'error');
+          return;
+        }
+
+        // Create and style the overlay
+        const overlay = document.createElement('div');
+        overlay.style.cssText = `
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(0,0,0,0.7);
+          z-index: 10000;
+          backdrop-filter: blur(4px);
+        `;
+
+        const modal = document.createElement('div');
+        modal.style.cssText = `
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          width: 90%;
+          max-width: 340px;
+          max-height: 80vh;
+          background: ${document.body.classList.contains('dark-theme') ? '#23232a' : '#fff'};
+          border-radius: 12px;
+          padding: 20px;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        `;
+
+        const header = document.createElement('div');
+        header.style.cssText = `
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 16px;
+          padding-bottom: 12px;
+          border-bottom: 1px solid ${document.body.classList.contains('dark-theme') ? '#333' : '#eee'};
+        `;
+
+        const title = document.createElement('h3');
+        title.textContent = 'Repository Structure';
+        title.style.cssText = `
+          margin: 0;
+          color: ${document.body.classList.contains('dark-theme') ? '#fff' : '#333'};
+          font-size: 16px;
+          font-weight: 600;
+        `;
+
+        const closeBtn = document.createElement('button');
+        closeBtn.innerHTML = '✖';
+        closeBtn.style.cssText = `
+          background: none;
+          border: none;
+          color: ${document.body.classList.contains('dark-theme') ? '#fff' : '#666'};
+          font-size: 18px;
+          cursor: pointer;
+          padding: 4px 8px;
+          border-radius: 4px;
+        `;
+        closeBtn.onclick = () => {
+          overlay.remove();
+          // Show theme toggle and history icon again when tree modal is closed
+          if (document.getElementById('theme-toggle')) {
+            document.getElementById('theme-toggle').style.display = '';
+          }
+          if (document.getElementById('history-icon')) {
+            document.getElementById('history-icon').style.display = '';
+          }
+          // Remove the class that keeps icons hidden
+          document.body.classList.remove('tree-modal-open');
+        };
+
+        const content = document.createElement('div');
+        content.style.cssText = `
+          flex: 1;
+          overflow-y: auto;
+          padding-right: 8px;
+        `;
+
+        // Show loading state
+        content.innerHTML = '<div style="text-align: center; padding: 20px;">Loading repository structure...</div>';
+
+        header.appendChild(title);
+        header.appendChild(closeBtn);
+        modal.appendChild(header);
+        modal.appendChild(content);
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+
+        // Get repository tree data from chrome storage
+        chrome.storage.local.get(['summaryResult'], async (result) => {
+          if (!result.summaryResult || !result.summaryResult.tree_data) {
+            content.innerHTML = `
+              <div style="color: ${document.body.classList.contains('dark-theme') ? '#fca5a5' : '#dc2626'}; 
+                          padding: 20px; text-align: center;">
+                Repository structure not available. Please try analyzing the repository again.
+              </div>`;
+            return;
+          }
+
+          const treeData = result.summaryResult.tree_data;
+          
+          function createTreeItem(node, level) {
+            const div = document.createElement('div');
+            div.className = 'tree-item';
+            div.dataset.type = node.type;
+            div.dataset.name = node.name;
+            
+            // Set styles without inline handlers
+            const indent = '&nbsp;'.repeat(level * 2);
+            const isFolder = node.type === 'directory' || node.type === 'tree';
+            const icon = isFolder ? '📁' : '📄';
+            
+            div.style.paddingLeft = `${level * 16}px`;
+            div.style.color = document.body.classList.contains('dark-theme') ? '#fff' : '#333';
+            div.style.cursor = 'pointer';
+            
+            div.innerHTML = `${indent}${icon} ${node.name}`;
+            
+            // Add event listeners properly
+            div.addEventListener('mouseover', function() {
+              this.style.backgroundColor = document.body.classList.contains('dark-theme') ? '#2d2d2d' : '#f5f5f5';
+            });
+            
+            div.addEventListener('mouseout', function() {
+              this.style.backgroundColor = 'transparent';
+            });
+            
+            return div;
+          }
+
+          function buildTreeDom(node, level = 0, container) {
+            const item = createTreeItem(node, level);
+            container.appendChild(item);
+            
+            if (node.children && node.children.length > 0) {
+              // Sort children: folders first, then files
+              node.children.sort((a, b) => {
+                const aIsFolder = a.type === 'directory' || a.type === 'tree';
+                const bIsFolder = b.type === 'directory' || b.type === 'tree';
+                if (aIsFolder === bIsFolder) return a.name.localeCompare(b.name);
+                return aIsFolder ? -1 : 1;
+              });
+              
+              // Recursively build children
+              node.children.forEach(child => {
+                buildTreeDom(child, level + 1, container);
+              });
+            }
+          }
+
+          // Create container for tree
+          const treeContainer = document.createElement('div');
+          treeContainer.style.cssText = `
+            font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
+            font-size: 13px;
+            line-height: 1.6;
+          `;
+
+          // Build tree DOM
+          buildTreeDom(treeData, 0, treeContainer);
+          
+          // Clear and append to content
+          content.innerHTML = '';
+          content.appendChild(treeContainer);
+
+          // Add scrollbar styling
+          content.style.cssText += `
+            scrollbar-width: thin;
+            scrollbar-color: ${document.body.classList.contains('dark-theme') ? '#666 #333' : '#ccc #f5f5f5'};
+          `;
+        });
+
+      } catch (error) {
+        console.error('Error fetching repository tree:', error);
+        showMessage('Failed to fetch repository structure', 'error');
+      }
+    });
   }
 
   // New function for GitHub-specific error with better styling

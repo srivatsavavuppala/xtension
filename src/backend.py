@@ -23,25 +23,151 @@ class RepoInfo(BaseModel):
     owner: str
     description: str
 
+class TreeRequest(BaseModel):
+    repo: str
+    owner: str
+    branch: str = "main"
+
+@app.get("/tree/{owner}/{repo}")
+async def get_repo_tree(owner: str, repo: str, branch: str = "main"):
+    try:
+        # Fetch the Git tree from GitHub API
+        response = requests.get(
+            f"https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1",
+            headers={"Accept": "application/vnd.github.v3+json"},
+            timeout=15
+        )
+        response.raise_for_status()
+        data = response.json()
+        
+        if data.get("truncated", False):
+            return {"error": "Repository too large to fetch complete tree"}
+        
+        # Process and structure the tree data
+        tree = data.get("tree", [])
+        structured_tree = []
+        
+        for item in tree:
+            path = item["path"]
+            type = "folder" if item["type"] == "tree" else "file"
+            
+            # Skip certain files and directories
+            if any(skip in path.lower() for skip in [".git", "node_modules", "__pycache__"]):
+                continue
+                
+            structured_tree.append({
+                "path": path,
+                "type": type,
+                "size": item.get("size", 0) if type == "file" else None,
+                "url": item.get("url", "")
+            })
+            
+        return {
+            "tree": structured_tree,
+            "sha": data.get("sha", ""),
+            "truncated": data.get("truncated", False)
+        }
+        
+    except requests.RequestException as e:
+        return {"error": f"Failed to fetch repository tree: {str(e)}"}
+
 @app.post("/summarize")
 def summarize_repo(info: RepoInfo):
     # Fetch README from GitHub
     readme = ""
     try:
-        r = requests.get(f"https://api.github.com/repos/{info.owner}/{info.repo}/readme", headers={"Accept": "application/vnd.github.v3.raw"}, timeout=15)
+        r = requests.get(f"https://api.github.com/repos/{info.owner}/{info.repo}/readme", 
+                        headers={"Accept": "application/vnd.github.v3.raw"}, 
+                        timeout=15)
         if r.ok:
             readme = r.text
     except Exception:
         pass
 
-    # Fetch file tree from GitHub (optional, for future use)
-    # tree = []
-    # try:
-    #     t = requests.get(f"https://api.github.com/repos/{info.owner}/{info.repo}/git/trees/master?recursive=1", timeout=15)
-    #     if t.ok:
-    #         tree = t.json().get("tree", [])
-    # except Exception:
-    #     pass
+    # Fetch and process repository tree
+    try:
+        tree_response = requests.get(
+            f"https://api.github.com/repos/{info.owner}/{info.repo}/git/trees/main?recursive=1",
+            headers={"Accept": "application/vnd.github.v3+json"},
+            timeout=15
+        )
+        tree_data = None
+        if tree_response.ok:
+            tree_json = tree_response.json()
+            if not tree_json.get("truncated", False):
+                # Process the tree into a hierarchical structure
+                root = {
+                    "name": info.repo,
+                    "type": "directory",
+                    "icon": "📁",
+                    "children": []
+                }
+                
+                # Create a dictionary to hold all paths
+                path_dict = {}
+                
+                # First pass: create all directory nodes
+                for item in tree_json.get("tree", []):
+                    path = item["path"]
+                    parts = path.split("/")
+                    
+                    # Skip unwanted files/directories
+                    if any(skip in path.lower() for skip in [".git", "node_modules", "__pycache__"]):
+                        continue
+                    
+                    # Create directory nodes for each part of the path
+                    current_path = ""
+                    for i, part in enumerate(parts[:-1]):
+                        parent_path = "/".join(parts[:i])
+                        current_path = "/".join(parts[:i+1])
+                        
+                        if current_path not in path_dict:
+                            new_node = {
+                                "name": part,
+                                "type": "directory",
+                                "icon": "📁",
+                                "children": []
+                            }
+                            path_dict[current_path] = new_node
+                            
+                            # Add to parent
+                            if parent_path:
+                                parent = path_dict[parent_path]
+                                parent["children"].append(new_node)
+                            else:
+                                root["children"].append(new_node)
+                
+                # Second pass: add all files
+                for item in tree_json.get("tree", []):
+                    if item["type"] != "blob":
+                        continue
+                        
+                    path = item["path"]
+                    parts = path.split("/")
+                    
+                    # Skip unwanted files
+                    if any(skip in path.lower() for skip in [".git", "node_modules", "__pycache__"]):
+                        continue
+                    
+                    file_node = {
+                        "name": parts[-1],
+                        "type": "file",
+                        "icon": "📄",
+                        "children": []
+                    }
+                    
+                    # Add file to its parent directory
+                    parent_path = "/".join(parts[:-1])
+                    if parent_path:
+                        parent = path_dict.get(parent_path)
+                        if parent:
+                            parent["children"].append(file_node)
+                    else:
+                        root["children"].append(file_node)
+                
+                tree_data = root
+    except Exception:
+        tree_data = None
 
     summary_prompt = (
         f"Summarize the following GitHub repository in a concise paragraph. "
@@ -84,7 +210,12 @@ def summarize_repo(info: RepoInfo):
     )
     response.raise_for_status()
     data = response.json()
+    
     return {
         "summary": data.get("summary", ""),
-        "project_paper": data.get("project_paper", "")
+        "project_paper": data.get("project_paper", ""),
+        "tree_data": tree_data,
+        "owner": info.owner,
+        "repo": info.repo,
+        "description": info.description
     }

@@ -1,6 +1,7 @@
 from http.server import BaseHTTPRequestHandler
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 import json
@@ -9,6 +10,16 @@ import requests
 from groq import Groq
 
 app = FastAPI()
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["chrome-extension://*"],  # Allow all Chrome extension origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all methods
+    allow_headers=["*"],  # Allow all headers
+    expose_headers=["*"]  # Expose all headers
+)
 
 class FileInfo(BaseModel):
     path: str
@@ -26,16 +37,19 @@ class handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         """Handle CORS preflight requests"""
         self.send_response(200)
-        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Origin', self.headers.get('Origin', '*'))
         self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+        self.send_header('Access-Control-Allow-Credentials', 'true')
+        self.send_header('Access-Control-Max-Age', '3600')
         self.end_headers()
     
     def do_GET(self):
         """Health check endpoint"""
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
-        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Origin', self.headers.get('Origin', '*'))
+        self.send_header('Access-Control-Allow-Credentials', 'true')
         self.end_headers()
         
         response = {
@@ -47,6 +61,15 @@ class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         """Handle POST requests for summarization"""
         try:
+            # Set CORS headers first
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', self.headers.get('Origin', '*'))
+            self.send_header('Access-Control-Allow-Credentials', 'true')
+            self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
+            self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+            self.end_headers()
+            
             # Read request body
             content_length = int(self.headers.get('Content-Length', 0))
             post_data = self.rfile.read(content_length)

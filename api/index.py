@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 import json
 import os
+import requests
 from groq import Groq
 
 app = FastAPI()
@@ -25,11 +26,9 @@ class handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         """Handle CORS preflight requests"""
         self.send_response(200)
-        # More comprehensive CORS headers for Chrome extensions
         self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS, PUT, DELETE')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin')
-        self.send_header('Access-Control-Max-Age', '86400')  # Cache preflight for 24 hours
+        self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
         self.end_headers()
     
     def do_GET(self):
@@ -37,27 +36,17 @@ class handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS, PUT, DELETE')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin')
         self.end_headers()
         
         response = {
             "status": "GitHub Repo Summarizer API is running",
-            "version": "1.0",
-            "cors": "enabled"
+            "version": "1.0"
         }
         self.wfile.write(json.dumps(response).encode())
     
     def do_POST(self):
         """Handle POST requests for summarization"""
         try:
-            # Set CORS headers first
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS, PUT, DELETE')
-            self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin')
-            
             # Read request body
             content_length = int(self.headers.get('Content-Length', 0))
             post_data = self.rfile.read(content_length)
@@ -66,30 +55,21 @@ class handler(BaseHTTPRequestHandler):
             try:
                 data = json.loads(post_data.decode('utf-8'))
             except json.JSONDecodeError:
-                self.end_headers()
-                error_response = {"error": "Invalid JSON"}
-                self.wfile.write(json.dumps(error_response).encode())
+                self.send_error_response(400, "Invalid JSON")
                 return
             
             # Validate required fields
             required_fields = ['repo', 'owner', 'description']
             for field in required_fields:
                 if field not in data:
-                    self.end_headers()
-                    error_response = {"error": f"Missing required field: {field}"}
-                    self.wfile.write(json.dumps(error_response).encode())
+                    self.send_error_response(400, f"Missing required field: {field}")
                     return
             
             # Initialize Groq client
             api_key = os.environ.get("API_KEY")
             if not api_key:
-                self.end_headers()
-                error_response = {"error": "API_KEY environment variable not set"}
-                self.wfile.write(json.dumps(error_response).encode())
+                self.send_error_response(500, "API_KEY environment variable not set")
                 return
-            
-            # End headers before sending response body
-            self.end_headers()
             
             client = Groq(api_key=api_key)
             
@@ -154,44 +134,125 @@ class handler(BaseHTTPRequestHandler):
             )
             project_paper = paper_completion.choices[0].message.content
             
-            # Generate tree data from structure information
-            tree_data = {
-                "name": data['repo'],
-                "type": "directory",
-                "icon": "📁",
-                "children": []
-            }
-            
-            if data.get('structure') and len(data.get('structure', [])) > 0:
-                # Process actual structure data
-                for file_info in data.get('structure', []):
-                    tree_data["children"].append({
-                        "name": file_info['path'],
-                        "type": file_info['type'],
-                        "icon": "📁" if file_info['type'] == "tree" else "📄",
-                        "children": []
-                    })
-            else:
-                # Generate a sample tree structure when no structure data is available
-                # This ensures the tree visualization always works
-                sample_structure = [
-                    {"name": "src", "type": "tree", "icon": "📁", "children": [
-                        {"name": "main.py", "type": "blob", "icon": "📄", "children": []},
-                        {"name": "utils.py", "type": "blob", "icon": "📄", "children": []}
-                    ]},
-                    {"name": "docs", "type": "tree", "icon": "📁", "children": [
-                        {"name": "README.md", "type": "blob", "icon": "📄", "children": []}
-                    ]},
-                    {"name": "tests", "type": "tree", "icon": "📁", "children": [
-                        {"name": "test_main.py", "type": "blob", "icon": "📄", "children": []}
-                    ]},
-                    {"name": "requirements.txt", "type": "blob", "icon": "📄", "children": []},
-                    {"name": ".gitignore", "type": "blob", "icon": "📄", "children": []}
-                ]
+            try:
+                headers = {}
+                if os.environ.get("GITHUB_TOKEN"):
+                    headers["Authorization"] = f"token {os.environ.get('GITHUB_TOKEN')}"
                 
-                tree_data["children"] = sample_structure
+                tree_response = requests.get(
+                    f"https://api.github.com/repos/{data['owner']}/{data['repo']}/git/trees/main?recursive=1",
+                    headers={"Accept": "application/vnd.github.v3+json", **headers},
+                    timeout=15
+                )
+                
+                if tree_response.ok:
+                    tree_json = tree_response.json()
+                    if not tree_json.get("truncated", False):
+                        # Initialize root directory
+                        tree_data = {
+                            "name": data['repo'],
+                            "type": "directory",
+                            "icon": "📁",
+                            "children": []
+                        }
+                        
+                        # Create directory mapping to handle nested structure
+                        dir_mapping = {"": tree_data}
+                        
+                        # Process all items in tree
+                        items = tree_json.get("tree", [])
+                        
+                        # Sort items to process directories first
+                        items.sort(key=lambda x: (x["type"] != "tree", x["path"]))
+                        
+                        for item in items:
+                            path = item["path"]
+                            parts = path.split("/")
+                            
+                            # Skip unwanted files/directories
+                            if any(skip in path.lower() for skip in [".git/", "node_modules/", "__pycache__/"]):
+                                continue
+                            
+                            is_dir = item["type"] == "tree"
+                            parent_path = "/".join(parts[:-1])
+                            
+                            if is_dir:
+                                # Create directory node
+                                dir_node = {
+                                    "name": parts[-1],
+                                    "type": "directory",
+                                    "icon": "📁",
+                                    "children": []
+                                }
+                                dir_mapping[path] = dir_node
+                                
+                                # Add to parent
+                                parent = dir_mapping.get(parent_path, tree_data)
+                                parent["children"].append(dir_node)
+                            else:
+                                # Create file node
+                                file_node = {
+                                    "name": parts[-1],
+                                    "type": "file",
+                                    "icon": "�",
+                                    "children": []
+                                }
+                                
+                                # Add to parent
+                                parent = dir_mapping.get(parent_path, tree_data)
+                                parent["children"].append(file_node)
+                        
+                        # Sort children in each directory
+                        def sort_tree(node):
+                            if node["children"]:
+                                node["children"].sort(key=lambda x: (x["type"] != "directory", x["name"].lower()))
+                                for child in node["children"]:
+                                    sort_tree(child)
+                        
+                        sort_tree(tree_data)
+                    else:
+                        tree_data = {
+                            "name": data['repo'],
+                            "type": "directory",
+                            "icon": "📁",
+                            "children": [{
+                                "name": "Repository too large",
+                                "type": "file",
+                                "icon": "⚠️",
+                                "children": []
+                            }]
+                        }
+                else:
+                    tree_data = {
+                        "name": data['repo'],
+                        "type": "directory",
+                        "icon": "📁",
+                        "children": [{
+                            "name": "Failed to fetch repository structure",
+                            "type": "file",
+                            "icon": "❌",
+                            "children": []
+                        }]
+                    }
+            except Exception as e:
+                tree_data = {
+                    "name": data['repo'],
+                    "type": "directory",
+                    "icon": "�",
+                    "children": [{
+                        "name": f"Error: {str(e)}",
+                        "type": "file",
+                        "icon": "⚠️",
+                        "children": []
+                    }]
+                }
             
             # Send successful response
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            
             response = {
                 "summary": summary,
                 "project_paper": project_paper,
@@ -203,25 +264,13 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(response).encode())
             
         except Exception as e:
-            # Make sure headers are sent even on error
-            if not hasattr(self, '_headers_sent'):
-                self.send_response(500)
-                self.send_header('Content-Type', 'application/json')
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS, PUT, DELETE')
-                self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin')
-                self.end_headers()
-            
-            error_response = {"error": f"Internal server error: {str(e)}"}
-            self.wfile.write(json.dumps(error_response).encode())
+            self.send_error_response(500, f"Internal server error: {str(e)}")
     
     def send_error_response(self, status_code, message):
-        """Send error response with CORS headers - DEPRECATED, use inline error handling"""
+        """Send error response with CORS headers"""
         self.send_response(status_code)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS, PUT, DELETE')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin')
         self.end_headers()
         
         error_response = {"error": message}

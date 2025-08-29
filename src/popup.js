@@ -430,7 +430,7 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
   chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
     const currentUrl = tabs[0].url;
     if (!currentUrl.includes('github.com')) {
-      showMessage('Please navigate to a GitHub repository page to use this extension.', 'error');
+      showGitHubError();
       summarizeBtn.disabled = true;
     }
   });
@@ -444,7 +444,7 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
 
   chrome.storage.local.get(['summaryStatus', 'summaryResult', 'summaryTab'], (result) => {
     if (result.summaryStatus === 'pending') {
-      showMessage('🔍 Extracting repository information...', 'loading');
+      showMessage('Extracting repository information...', 'loading');
       setLoadingState(true);
       downloadBtn.style.display = 'none';
     } else if (result.summaryStatus === 'done' && result.summaryResult) {
@@ -474,7 +474,7 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
   summarizeBtn.addEventListener('click', async () => {
     try {
       setLoadingState(true);
-      showMessage('🔍 Extracting repository information...', 'loading');
+      showMessage('Extracting repository information...', 'loading');
       chrome.storage.local.set({ summaryStatus: 'pending', summaryResult: null });
       console.log('[Xtension] Extraction started. Querying active tab for repo info...');
       let stillWorkingTimeout = null;
@@ -489,16 +489,8 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
                   didRespond = true;
                   console.error('[Xtension] Extraction timed out.');
                   setLoadingState(false);
-                  showMessage('❌ Timed out extracting repository information. For large repositories, please ensure the page is fully loaded and try again. <button id="retry-extract-btn" style="margin-left:10px;padding:2px 8px;">Retry</button>', 'error');
+                  showTimeoutError();
                   chrome.storage.local.set({ summaryStatus: 'error', summaryResult: null });
-                  setTimeout(() => {
-                    const retryBtn = document.getElementById('retry-extract-btn');
-                    if (retryBtn) {
-                      retryBtn.onclick = () => {
-                        summarizeBtn.click();
-                      };
-                    }
-                  }, 100);
                   reject(new Error('Timed out extracting repository information. The repository may be too large or the page is not supported.'));
                 }
               }, timeout);
@@ -522,14 +514,14 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
           }
           if (!repoInfo) {
             setLoadingState(false);
-            showMessage('❌ Could not extract repository information. Please make sure you\'re on a GitHub repository page.', 'error');
+            showMessage('Could not extract repository information. Please make sure you\'re on a GitHub repository page.', 'error', 'extraction-error');
             chrome.storage.local.set({ summaryStatus: 'error', summaryResult: null });
             return;
           }
-          showMessage('🤖 Generating AI summary...', 'loading');
+          showMessage('Generating AI summary...', 'loading');
           console.log('[Xtension] Sending repo info to backend:', repoInfo);
           stillWorkingTimeout = setTimeout(() => {
-            showMessage('⏳ Still working... Large repositories may take up to 30 seconds. Please wait.', 'loading');
+            showMessage('Still working... Large repositories may take up to 30 seconds. Please wait.', 'loading');
             console.log('[Xtension] Still working... waiting for backend response.');
           }, 20000);
           try {
@@ -571,21 +563,21 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
           } catch (fetchError) {
             clearTimeout(stillWorkingTimeout);
             setLoadingState(false);
-            showMessage(`❌ Error generating summary: ${fetchError.message}. Please try again later or contact support if the problem persists.`, 'error');
+            showMessage(`Error generating summary: ${fetchError.message}. Please try again later or contact support if the problem persists.`, 'error', 'api-error');
             chrome.storage.local.set({ summaryStatus: 'error', summaryResult: null });
             console.error('[Xtension] Summarization error:', fetchError);
           }
         } catch (tabError) {
           clearTimeout(stillWorkingTimeout);
           setLoadingState(false);
-          showMessage('❌ Error accessing the current tab. Please refresh the page and try again.', 'error');
+          showMessage('Error accessing the current tab. Please refresh the page and try again.', 'error', 'extraction-error');
           chrome.storage.local.set({ summaryStatus: 'error', summaryResult: null });
           console.error('[Xtension] Tab access error:', tabError);
         }
       });
     } catch (error) {
       setLoadingState(false);
-      showMessage(`❌ Unexpected error: ${error.message}`, 'error');
+      showMessage(`Unexpected error: ${error.message}`, 'error');
       chrome.storage.local.set({ summaryStatus: 'error', summaryResult: null });
       console.error('[Xtension] Unexpected error:', error);
     }
@@ -593,7 +585,7 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
 
   downloadBtn.addEventListener('click', () => {
     if (!projectPaper) {
-      showMessage('❌ No project report available to download.', 'error');
+      showMessage('No project report available to download.', 'error');
       return;
     }
     try {
@@ -614,14 +606,14 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
         downloadBtn.style.background = '';
       }, 2000);
     } catch (error) {
-      showMessage('❌ Error downloading file: ' + error.message, 'error');
+      showMessage('Error downloading file: ' + error.message, 'error');
     }
   });
   const clearSessionBtn = document.getElementById('clearSessionBtn');
 
   clearSessionBtn.addEventListener('click', () => {
     chrome.storage.local.remove(['summaryStatus', 'summaryResult', 'summaryTab'], () => {
-      showMessage('🧹 Session cleared. You can generate a new summary now.', 'info');
+      showMessage('Session cleared. You can generate a new summary now.', 'info');
       downloadBtn.style.display = 'none';
       clearSessionBtn.style.display = 'none';
     });
@@ -1270,8 +1262,107 @@ function createFavoriteHistoryItem(item, index) {
     } else if (type === 'info') {
       icon = 'ℹ️';
     }
-    summaryDiv.innerHTML = `<span class="status-indicator ${type}">${icon}</span> ${message}`;
+    
+    if (type === 'error') {
+      summaryDiv.innerHTML = `<span class="status-indicator ${type}">${icon}</span> ${message}`;
+    } else {
+      summaryDiv.innerHTML = `<span class="status-indicator ${type}">${icon}</span> ${message}`;
+    }
     summaryDiv.style.display = 'block';
+  }
+
+  // New function for GitHub-specific error with better styling
+  function showGitHubError() {
+    summaryDiv.className = 'error';
+    summaryDiv.innerHTML = `
+      <div class="error-content">
+        <div class="error-icon">🔗</div>
+        <div class="error-text">
+          <h3 class="error-title">GitHub Repository Required</h3>
+          <p class="error-description">Please navigate to a GitHub repository page to use this extension.</p>
+          <div class="error-actions">
+            <button class="error-action-btn">🌐 Go to GitHub</button>
+          </div>
+        </div>
+      </div>
+    `;
+    summaryDiv.style.display = 'block';
+    
+    // Add event listener to the button
+    const goToGitHubBtn = summaryDiv.querySelector('.error-action-btn');
+    if (goToGitHubBtn) {
+      goToGitHubBtn.addEventListener('click', openGitHub);
+    }
+  }
+
+  // Helper functions for error actions
+  function openGitHub() {
+    chrome.tabs.create({ url: 'https://github.com' });
+  }
+
+  function showGitHubHelp() {
+    summaryDiv.innerHTML = `
+      <div class="error-content">
+        <div class="error-icon">❓</div>
+        <div class="error-text">
+          <h3 class="error-title">How to use Repo Summarizer</h3>
+          <p class="error-description">
+            1. Navigate to any GitHub repository page (e.g., github.com/username/repo)<br>
+            2. Click the "Analyze Repository" button<br>
+            3. Wait for the AI to analyze the code and generate a summary<br>
+            4. Download the detailed project report if needed
+          </p>
+          <div class="error-actions">
+            <button class="error-action-btn">🌐 Go to GitHub</button>
+            <button class="error-action-btn secondary">← Back</button>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    // Add event listeners to the buttons
+    const goToGitHubBtn = summaryDiv.querySelector('.error-action-btn');
+    const backBtn = summaryDiv.querySelector('.error-action-btn.secondary');
+    
+    if (goToGitHubBtn) {
+      goToGitHubBtn.addEventListener('click', openGitHub);
+    }
+    if (backBtn) {
+      backBtn.addEventListener('click', showGitHubError);
+    }
+  }
+
+  function showTimeoutError() {
+    summaryDiv.className = 'error';
+    summaryDiv.innerHTML = `
+      <div class="error-content">
+        <div class="error-icon">⏰</div>
+        <div class="error-text">
+          <h3 class="error-title">Extraction Timed Out</h3>
+          <p class="error-description">The repository analysis took too long. This often happens with large repositories. Please ensure the page is fully loaded and try again.</p>
+          <div class="error-actions">
+            <button class="error-action-btn">🔄 Retry Analysis</button>
+            <button class="error-action-btn secondary">← Back</button>
+          </div>
+        </div>
+      </div>
+    `;
+    summaryDiv.style.display = 'block';
+    
+    // Add event listeners to the buttons
+    const retryBtn = summaryDiv.querySelector('.error-action-btn');
+    const backBtn = summaryDiv.querySelector('.error-action-btn.secondary');
+    
+    if (retryBtn) {
+      retryBtn.addEventListener('click', retryExtraction);
+    }
+    if (backBtn) {
+      backBtn.addEventListener('click', showGitHubError);
+    }
+  }
+
+  function retryExtraction() {
+    summarizeBtn.click();
   }
   // All showMessage calls are now handled in their respective try/catch blocks with correct variable scope
 

@@ -535,6 +535,16 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
   const downloadBtn = document.getElementById('downloadBtn');
   const summaryDiv = document.getElementById('summary');
   const historyIcon = document.getElementById('history-icon');
+  const askPanel = document.getElementById('ask-repo');
+  const askInput = document.getElementById('askInput');
+  const askBtn = document.getElementById('askBtn');
+  const askResult = document.getElementById('askResult');
+  let RAG_API_BASE = 'http://localhost:8000';
+  chrome.storage.local.get({ ragApiBase: null }, (cfg) => {
+    if (cfg && cfg.ragApiBase) {
+      RAG_API_BASE = cfg.ragApiBase;
+    }
+  });
   if (historyIcon) {
   const updateHistoryIconTheme = () => {
     if (document.body.classList.contains('dark-theme')) {
@@ -590,6 +600,106 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
     ]);
   }
 
+  function showAskPanel() {
+    if (askPanel) {
+      askPanel.style.display = 'block';
+    }
+  }
+
+  function hideAskPanel() {
+    if (askPanel) {
+      askPanel.style.display = 'none';
+    }
+  }
+
+  async function buildEmbeddings(owner, repo) {
+    return new Promise((resolve) => {
+      const storageKey = `ragBuilt:${owner}/${repo}`;
+      chrome.storage.local.get({ [storageKey]: null }, async (result) => {
+        const builtInfo = result[storageKey];
+        const staleAfterMs = 7 * 24 * 60 * 60 * 1000;
+        const isFresh = builtInfo && (Date.now() - builtInfo.timestamp < staleAfterMs);
+        if (isFresh) {
+          resolve({ skipped: true });
+          return;
+        }
+        try {
+          if (askBtn) askBtn.disabled = true;
+          if (askResult) {
+            askResult.innerHTML = '<div style="font-size: 13px; color: var(--empty-desc);">Indexing repo for semantic search…</div>';
+          }
+          const res = await fetch(`${RAG_API_BASE}/build_embeddings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ owner, repo })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.detail || 'Failed to build embeddings');
+          chrome.storage.local.set({ [storageKey]: { timestamp: Date.now(), stats: data } });
+          if (askResult) {
+            askResult.innerHTML = `<div style="font-size: 13px; color: var(--empty-desc);">Indexed ${data.num_files_indexed} files and ${data.num_chunks_indexed} chunks in ${data.took_seconds}s.</div>`;
+          }
+          resolve({ skipped: false, data });
+        } catch (e) {
+          if (askResult) {
+            askResult.innerHTML = `<div style=\"font-size: 13px; color: #dc2626;\">Indexing failed: ${e.message}. You can still try asking.</div>`;
+          }
+          resolve({ error: e });
+        } finally {
+          if (askBtn) askBtn.disabled = false;
+        }
+      });
+    });
+  }
+
+  async function queryRepo(owner, repo, question) {
+    const res = await fetch(`${RAG_API_BASE}/query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ owner, repo, question })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Query failed');
+    return data;
+  }
+
+  function renderQueryResult(result) {
+    if (!askResult) return;
+    const refs = (result.references || []).map((r, idx) => {
+      const label = `[${idx + 1}] ${r.file_path}:${r.start_line}-${r.end_line}`;
+      const href = r.url || '#';
+      return `<div style="margin:4px 0;"><a href="${href}" target="_blank" style="text-decoration:none; color:#2563eb;">${label}</a></div>`;
+    }).join('');
+    askResult.innerHTML = `
+      <div style="white-space: pre-wrap; line-height: 1.5; color: var(--modal-title);">${result.answer || ''}</div>
+      ${refs ? `<div style=\"margin-top:8px; border-top:1px solid var(--modal-border); padding-top:8px;\"><div style=\"font-weight:600; margin-bottom:4px;\">References</div>${refs}</div>` : ''}
+    `;
+  }
+
+  function initializeAskRepo(owner, repo) {
+    if (!owner || !repo) return;
+    showAskPanel();
+    buildEmbeddings(owner, repo);
+    if (askBtn) {
+      askBtn.onclick = async () => {
+        try {
+          const question = (askInput && askInput.value ? askInput.value.trim() : '');
+          if (!question) return;
+          askBtn.disabled = true;
+          askBtn.textContent = 'Asking…';
+          askResult.innerHTML = '<div style="font-size: 13px; color: var(--empty-desc);">Retrieving relevant code…</div>';
+          const result = await queryRepo(owner, repo, question);
+          renderQueryResult(result);
+        } catch (e) {
+          askResult.innerHTML = `<div style=\"color:#dc2626;\">${e.message}</div>`;
+        } finally {
+          askBtn.disabled = false;
+          askBtn.textContent = 'Ask';
+        }
+      };
+    }
+  }
+
   chrome.storage.local.get(['summaryStatus', 'summaryResult', 'summaryTab'], (result) => {
     if (result.summaryStatus === 'pending') {
       showMessage('Extracting repository information...', 'loading');
@@ -607,6 +717,11 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
       downloadBtn.style.opacity = '1';
       downloadBtn.style.transform = 'translateY(0)';
       setLoadingState(false);
+      if (result.summaryResult.owner && result.summaryResult.repo) {
+        initializeAskRepo(result.summaryResult.owner, result.summaryResult.repo);
+      } else {
+        hideAskPanel();
+      }
     } else {
       // Hide and reset download button if not available
       downloadBtn.style.display = 'none';
@@ -708,6 +823,11 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
               downloadBtn.style.transform = 'translateY(0)';
             }, 100);
             console.log('[Xtension] Summarization complete.');
+            if (repoInfo && repoInfo.owner && repoInfo.repo) {
+              const owner = data.owner || repoInfo.owner;
+              const repo = data.repo || repoInfo.repo;
+              initializeAskRepo(owner, repo);
+            }
           } catch (fetchError) {
             clearTimeout(stillWorkingTimeout);
             setLoadingState(false);
@@ -764,6 +884,7 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
       showMessage('Session cleared. You can generate a new summary now.', 'info');
       downloadBtn.style.display = 'none';
       clearSessionBtn.style.display = 'none';
+      hideAskPanel();
     });
   });
 

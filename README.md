@@ -198,3 +198,133 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ---
 
 **Repo Summarizer** - Making GitHub repositories more accessible and understandable through beautiful visualizations and AI-powered insights! 🌳✨
+
+## RAG-Powered Code Navigation Assistant (Planned Enhancement)
+
+Enhance the extension with a Retrieval-Augmented Generation (RAG) assistant that lets users ask natural-language questions about a repository and receive precise answers with citations to file paths and line ranges.
+
+### What you get
+- **Ask Repo panel** in the extension: pose questions and get answers grounded in the codebase.
+- **Citations**: Each answer includes clickable references like `path/to/file.py:L120-L168`.
+- **Fast queries**: Embeddings are built and stored during the initial analysis so queries are quick.
+
+### Overview of the design
+- **Two-stage retrieval**:
+  - Stage 1: Semantic search over file-level embeddings to identify the most relevant files.
+  - Stage 2: Retrieve and rank code/document chunks (≈300–500 tokens) from those files.
+- **Vector database**: Use Chroma DB for persistence. Store embeddings + metadata: `repo_id`, `file_path`, `start_line`, `end_line`, `language`, `sha`.
+- **Embeddings**: Use a hosted model (e.g., OpenAI `text-embedding-3-large`) or a local model (e.g., `sentence-transformers/all-MiniLM-L6-v2`).
+- **LLM generation**: Retrieved chunks are sent as context to the LLM to generate concise, citation-rich answers.
+
+### Backend changes
+- **New endpoint**: `POST /query`
+  - Accepts a natural-language `question` and repo identity.
+  - Runs two-stage retrieval and returns an answer with citations and metadata.
+- **Indexing at analysis time**:
+  - During the initial repository analysis, fetch the default branch, list files, fetch raw contents for selected text files, and build both file-level and chunk-level embeddings.
+  - Persist embeddings and metadata in Chroma so subsequent `/query` calls are fast.
+
+#### /query API (spec)
+Request:
+
+```json
+{
+  "owner": "octocat",
+  "repo": "hello-world",
+  "question": "How does user authentication flow work?",
+  "repo_id": "octocat/hello-world", 
+  "max_files": 8, 
+  "max_chunks": 12, 
+  "max_context_tokens": 3000,
+  "include_snippets": true
+}
+```
+
+Response:
+
+```json
+{
+  "answer": "Authentication uses OAuth2 flow ... See app/auth.py L45-L112 and routes/session.py L10-L44.",
+  "citations": [
+    {
+      "file_path": "app/auth.py",
+      "start_line": 45,
+      "end_line": 112,
+      "score": 0.82,
+      "preview": "def login(): ..."
+    },
+    {
+      "file_path": "routes/session.py",
+      "start_line": 10,
+      "end_line": 44,
+      "score": 0.77
+    }
+  ],
+  "debug": {
+    "top_files": ["app/auth.py", "routes/session.py"],
+    "top_chunks": 12
+  }
+}
+```
+
+### Retrieval pipeline
+- **File selection**: Include text/code files (md, txt, rst, py, js/ts/tsx, json, yml/yaml, toml, go, rs, java, kt, swift, c/cpp/h, cs, php, rb). Exclude binaries, `node_modules`, `vendor`, `.git`, `dist`, `build`, `__pycache__`.
+- **Limits**: Per-file raw size cap ~64 KB; total fetch cap ~1–2 MB to keep indexing snappy.
+- **Chunking**: Split files into ~300–500 token chunks (with small overlap). Track `start_line`/`end_line` for each chunk.
+- **Stage 1 (files)**: Embed the question, run vector search over file-level embeddings to get top-k files.
+- **Stage 2 (chunks)**: For each top file, search its chunk embeddings and collect the top chunks until the context token budget is reached.
+- **Prompting**: Prepend a “Context” block with chunk excerpts and file path citations. Instruct the model to answer only from the provided context or say “Not in context”.
+
+### Vector DB (Chroma) setup
+- **Persistence**: Use a dedicated directory for Chroma (e.g., `./.chroma`).
+- **Collections**:
+  - `repo_files`: one embedding per file; metadata `{repo_id, file_path, language, sha}`
+  - `repo_chunks`: one embedding per chunk; metadata `{repo_id, file_path, start_line, end_line, token_count, sha}`
+- **Repo identity**: `repo_id = "{owner}/{repo}"` to isolate indexes per repository.
+
+### Embedding models
+- **Hosted**: OpenAI `text-embedding-3-large` (high quality). Requires `OPENAI_API_KEY`.
+- **Local**: `sentence-transformers/all-MiniLM-L6-v2` (fast, CPU-friendly). Requires `sentence-transformers` and `torch`.
+
+### LLM for answering
+- Default: Groq `llama-3.3-70b-versatile` (already used). Provide a concise answer with inline citations like `path/to/file.py:L10-L44`.
+
+### Frontend changes (Ask Repo panel)
+- Add a new panel in the extension UI (e.g., "Ask Repo"):
+  - Input box for the question.
+  - Submit button to call the backend `/query` endpoint with `{owner, repo, question}`.
+  - Render the `answer` and a list of `citations` as clickable links to GitHub lines: `https://github.com/{owner}/{repo}/blob/{branch}/{file_path}#L{start}-L{end}`.
+- Reuse the existing repository extraction logic in `src/content.js` to obtain `{owner, repo}`.
+
+### Environment variables
+- **Required**:
+  - `API_KEY`: Groq API key for LLM calls (existing).
+- **Optional**:
+  - `OPENAI_API_KEY`: for OpenAI embeddings (if selected).
+  - `EMBEDDING_MODEL`: `text-embedding-3-large` or `sentence-transformers/all-MiniLM-L6-v2`.
+  - `CHROMA_PERSIST_DIR`: path to persist Chroma DB (default `./.chroma`).
+  - `MAX_CONTEXT_TOKENS`: budget for prompt context (e.g., `3000`).
+
+### Dependencies to add
+- Python: `chromadb`, `sentence-transformers` (if using local embeddings), `tiktoken` (or similar) for token counts.
+
+Install example:
+
+```bash
+pip install chromadb sentence-transformers tiktoken
+```
+
+### Implementation steps (high level)
+1. **Indexing**: During repo analysis, detect default branch, list files, fetch raw content (respecting size/filters), build file- and chunk-level embeddings, and persist to Chroma with metadata.
+2. **Query endpoint**: Implement `POST /query` that:
+   - Embeds the question, runs Stage 1 (files) and Stage 2 (chunks).
+   - Builds a grounded prompt with chunk excerpts and citations.
+   - Calls the LLM and returns `answer`, `citations`, and optional `debug` info.
+3. **Frontend**: Add the "Ask Repo" UI, call `/query`, and render the answer with clickable citations.
+4. **Performance**: Cache repo content by commit SHA, cap total fetched bytes, and handle GitHub rate limits gracefully.
+5. **Safety**: Ignore secrets files and binaries, and instruct the model to avoid speculation outside provided context.
+
+### Notes
+- Implement backend changes in your deployed API (e.g., `api/index.py`). The local FastAPI in `src/backend.py` can proxy `/query` similarly to `/summarize`.
+- Index building time depends on repo size. For large repos, show progress and allow partial indexes.
+

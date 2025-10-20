@@ -2,6 +2,90 @@
 (function addThemeVars() {
   const style = document.createElement('style');
   style.textContent = `
+    /* Ask Panel Styles */
+    #ask-repo {
+      padding: 16px;
+      margin-top: 12px;
+      background: var(--modal-bg);
+      border-radius: 8px;
+      border: 1px solid var(--modal-border);
+    }
+    
+    #askInput {
+      width: 100%;
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--modal-border);
+      background: var(--popup-bg);
+      color: var(--popup-text);
+      margin-bottom: 12px;
+      font-size: 14px;
+    }
+    
+    #askBtn {
+      background: var(--tab-active-color) !important;
+      color: white !important;
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+    
+    #askBtn:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+    }
+    
+    #askResult {
+      margin-top: 16px;
+      max-height: 300px;
+      overflow-y: auto;
+      padding-right: 8px;
+    }
+    
+    .answer-container {
+      background: var(--summary-bg);
+      color: var(--summary-text);
+      padding: 16px;
+      border-radius: 8px;
+      border: 1px solid var(--modal-border);
+      font-size: 14px;
+      line-height: 1.6;
+      margin: 12px 0;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    
+    .answer-container a {
+      color: #58a6ff;
+      text-decoration: none;
+    }
+    
+    .answer-container a:hover {
+      text-decoration: underline;
+    }
+    
+    .references-list {
+      margin-top: 12px;
+      padding-top: 8px;
+      border-top: 1px solid var(--modal-border);
+    }
+    
+    .references-list a {
+      display: block;
+      padding: 4px 0;
+      color: #58a6ff;
+      text-decoration: none;
+      font-size: 12px;
+    }
+    
+    .references-list a:hover {
+      text-decoration: underline;
+    }
+    
     :root {
       --popup-bg: #fff;
       --popup-text: #23272e;
@@ -663,17 +747,52 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
     return data;
   }
 
-  function renderQueryResult(result) {
+ function renderQueryResult(result) {
     if (!askResult) return;
-    const refs = (result.references || []).map((r, idx) => {
-      const label = `[${idx + 1}] ${r.file_path}:${r.start_line}-${r.end_line}`;
-      const href = r.url || '#';
-      return `<div style="margin:4px 0;"><a href="${href}" target="_blank" style="text-decoration:none; color:#2563eb;">${label}</a></div>`;
-    }).join('');
-    askResult.innerHTML = `
-      <div style="white-space: pre-wrap; line-height: 1.5; color: var(--modal-title);">${result.answer || ''}</div>
-      ${refs ? `<div style=\"margin-top:8px; border-top:1px solid var(--modal-border); padding-top:8px;\"><div style=\"font-weight:600; margin-bottom:4px;\">References</div>${refs}</div>` : ''}
+    
+    const answerHtml = `
+      <div style="background: var(--summary-bg); padding: 16px; border-radius: 8px; margin-bottom: 12px; border-left: 3px solid var(--tab-active-color);">
+        <div style="white-space: pre-wrap; line-height: 1.6; color: var(--modal-title);">${result.answer || 'No answer available'}</div>
+      </div>
     `;
+    
+    let refsHtml = '';
+    if (result.references && result.references.length > 0) {
+      const refItems = result.references.map((r, idx) => {
+        const label = `${r.file_path}:${r.start_line}-${r.end_line}`;
+        const href = r.url || '#';
+        return `
+          <a href="${href}" target="_blank" style="
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            margin: 4px 0;
+            background: var(--modal-bg);
+            border: 1px solid var(--modal-border);
+            border-radius: 6px;
+            text-decoration: none;
+            color: var(--tab-active-color);
+            font-size: 13px;
+            transition: all 0.2s ease;
+          " onmouseover="this.style.borderColor='var(--tab-active-color)'; this.style.transform='translateX(4px)';" onmouseout="this.style.borderColor='var(--modal-border)'; this.style.transform='translateX(0)';">
+            <span style="font-weight: 600;">[${idx + 1}]</span>
+            <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${label}</span>
+            <span class="material-icons" style="font-size: 16px;">open_in_new</span>
+          </a>
+        `;
+      }).join('');
+      
+      refsHtml = `
+        <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--modal-border);">
+          <div style="font-weight: 600; margin-bottom: 8px; color: var(--modal-title); font-size: 13px;">📚 References (${result.references.length})</div>
+          ${refItems}
+        </div>
+      `;
+    }
+    
+    askResult.innerHTML = answerHtml + refsHtml;
+    askResult.scrollTop = 0;
   }
 
   function initializeAskRepo(owner, repo) {

@@ -24,6 +24,15 @@ except Exception:  # pragma: no cover
 # You can set your API URL here (pointing to the ai backend)
 AI_BACKEND_URL = "https://xtension-alpha.vercel.app/api/summarize"
 
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
+
+# Get API key from environment
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+if not GROQ_API_KEY:
+    print("Warning: GROQ_API_KEY not found in environment variables")
+
 app = FastAPI()
 
 # Allow CORS for extension
@@ -268,15 +277,25 @@ def sha1_id(repo_id: str, path: str, start_line: Optional[int] = None, end_line:
     base = f"{repo_id}:{path}:{start_line or ''}:{end_line or ''}"
     return hashlib.sha1(base.encode("utf-8")).hexdigest()
 
+import re
+
+def sanitize_name(name: str) -> str:
+    return re.sub(r'[^a-zA-Z0-9._-]', '-', name)
 
 def get_or_create_collections(repo_id: str):
     client = get_chroma_client()
-    files_name = f"files::{repo_id}"
-    chunks_name = f"chunks::{repo_id}"
-    files_coll = client.get_or_create_collection(name=files_name, metadata={"repo_id": repo_id, "type": "files"})
-    chunks_coll = client.get_or_create_collection(name=chunks_name, metadata={"repo_id": repo_id, "type": "chunks"})
+    safe_repo_id = sanitize_name(repo_id)
+    files_name = f"files--{safe_repo_id}"
+    chunks_name = f"chunks--{safe_repo_id}"
+    files_coll = client.get_or_create_collection(
+        name=files_name,
+        metadata={"repo_id": repo_id, "type": "files"}
+    )
+    chunks_coll = client.get_or_create_collection(
+        name=chunks_name,
+        metadata={"repo_id": repo_id, "type": "chunks"}
+    )
     return files_coll, chunks_coll
-
 
 class BuildEmbeddingsRequest(BaseModel):
     owner: str
@@ -297,22 +316,14 @@ def build_embeddings(req: BuildEmbeddingsRequest):
     start_time = time.time()
     branch = req.branch or get_default_branch(req.owner, req.repo)
     repo_id = get_repo_id(req.owner, req.repo, branch)
-
-    # Prepare collections and model
     files_coll, chunks_coll = get_or_create_collections(repo_id)
     model = get_embedding_model()
-
-    # List and fetch files
     files = list_repo_files(req.owner, req.repo, branch)
     num_files = 0
     num_chunks = 0
-
-    # Index files in batches for stability
     file_texts: List[str] = []
     file_ids: List[str] = []
     file_metas: List[Dict[str, Any]] = []
-
-    # First gather file-level content (with size caps)
     for path in files:
         content = fetch_file_content(req.owner, req.repo, branch, path)
         if not content:
@@ -412,7 +423,13 @@ def _query_chroma_chunks(repo_id: str, query_emb: np.ndarray, file_paths: List[s
     _, chunks_coll = get_or_create_collections(repo_id)
     results: List[Dict[str, Any]] = []
     for path in file_paths:
-        res = chunks_coll.query(query_embeddings=[query_emb.tolist()], n_results=per_file, where={"repo_id": repo_id, "file_path": path})
+        where_filter = {
+            "$and": [
+                {"repo_id": {"$eq": repo_id}},
+                {"file_path": {"$eq": path}}
+            ]
+        }
+        res = chunks_coll.query(query_embeddings=[query_emb.tolist()], n_results=per_file, where=where_filter)
         for i in range(len(res.get("ids", [[]])[0])):
             results.append({
                 "id": res["ids"][0][i],

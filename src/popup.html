@@ -13,12 +13,72 @@
       min-height: 500px;
       max-height: 600px;
       overflow-x: hidden;
-      overflow-y: hidden;
+      overflow-y: auto;
     }
     #main {
       min-height: 480px;
       min-width: 340px;
       max-width: 380px;
+    }
+    #ask-repo {
+      padding: 16px;
+      margin: 16px;
+      background: var(--modal-bg);
+      border-radius: 12px;
+      border: 1px solid var(--modal-border);
+    }
+    .ask-header {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--modal-title);
+      margin-bottom: 12px;
+    }
+    .ask-input-container {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    #askInput {
+      flex: 1;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--modal-border);
+      background: var(--popup-bg);
+      color: var(--popup-text);
+      font-size: 14px;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+    #askInput:focus {
+      border-color: var(--tab-active-color);
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
+    }
+    #askBtn {
+      background: var(--tab-active-color) !important;
+      color: white !important;
+      padding: 8px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+    }
+    #askBtn:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+    }
+    #askBtn .material-icons {
+      font-size: 20px;
+    }
+    #askResult {
+      max-height: 300px;
+      overflow-y: auto;
+      margin-top: 12px;
+      font-size: 14px;
+      line-height: 1.6;
     }
   </style>
 </head>
@@ -43,13 +103,15 @@
     
     <div id="summary"></div>
 
-    <div id="ask-repo" style="display:none; width: 100%; margin-top: 8px;">
-      <div style="font-weight: 600; margin-bottom: 6px; color: var(--modal-title);">Ask Repo</div>
-      <div style="display:flex; gap: 8px; align-items: stretch;">
-        <input id="askInput" type="text" placeholder="Ask a question about this repo..." style="flex:1; padding: 10px 12px; border-radius: 10px; border:1px solid var(--modal-border); outline:none;">
-        <button id="askBtn" style="min-width: 88px;">Ask</button>
+    <div id="ask-repo" style="display:none;">
+      <div class="ask-header">Ask about Repository</div>
+      <div class="ask-input-container">
+        <input id="askInput" type="text" placeholder="Ask a question about this repo...">
+        <button id="askBtn">
+          <span class="material-icons">send</span>
+        </button>
       </div>
-      <div id="askResult" style="margin-top: 10px; max-height: 220px; overflow-y: auto;"></div>
+      <div id="askResult"></div>
     </div>
     
     <button id="downloadBtn" style="display:none;">

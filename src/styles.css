@@ -124,6 +124,9 @@ h2 {
 }
 
 .button-container {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
   width: 100%;
   margin-bottom: 20px;
 }
@@ -218,7 +221,7 @@ button:disabled {
   width: 100%;
   min-height: 120px;
   max-height: 260px;
-  overflow-y: auto;
+  overflow-y: hidden;
   box-shadow: 
     inset 0 2px 4px rgba(0, 0, 0, 0.06),
     0 4px 12px rgba(0, 0, 0, 0.05);
@@ -631,12 +634,35 @@ body.dark-theme #summary.loading {
     0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
+
 #downloadBtn:hover {
   background: linear-gradient(135deg, #38a169 0%, #2f855a 100%);
   transform: translateY(-2px) scale(1.02);
   box-shadow: 
     0 12px 32px rgba(72, 187, 120, 0.3),
     0 6px 16px rgba(0, 0, 0, 0.15);
+}
+
+
+.chat-icon-btn {
+  width: 38px;
+  height: 38px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.chat-icon-btn img {
+  width: 20px;
+  height: 20px;
+}
+
+.chat-icon-btn:hover {
+  transform: scale(1.1);
 }
 
 #clearSessionBtn {
@@ -1054,3 +1080,33 @@ body:not(.dark-theme) #theme-toggle {
     #askResult::-webkit-scrollbar-thumb:hover {
       background: var(--tab-inactive-color);
     }
+    .top-icons {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 1000;
+}
+
+.top-icons img {
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  background: white;
+  border-radius: 8px;
+  padding: 6px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.top-icons img:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+}
+
+body.dark-theme .top-icons img {
+  background: #23232a;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+}

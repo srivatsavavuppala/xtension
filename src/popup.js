@@ -1,4 +1,3 @@
-// Add CSS variables for light/dark theme to :root and .dark-theme
 (function addThemeVars() {
   const style = document.createElement('style');
   style.textContent = `
@@ -135,7 +134,8 @@
     }
     
     .overlay-open #theme-toggle,
-    .overlay-open #history-icon {
+    .overlay-open #history-icon,
+    .chat-overlay-open #theme-toggle {
       display: none !important;
       visibility: hidden !important;
     }
@@ -365,14 +365,176 @@ body.dark-theme #history-icon {
   box-shadow: none !important;
 }
 
-body.dark-theme #theme-toggle:hover,
-body.dark-theme #history-icon:hover {
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-}
+    body.dark-theme #theme-toggle:hover,
+    body.dark-theme #history-icon:hover,
+    body.dark-theme #chat-icon:hover {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+    }
 
-/* Light theme icon styling */
+    .floating-icon {
+      position: fixed !important;
+      bottom: 20px !important;
+      right: 20px !important;
+      width: 48px !important;
+      height: 48px !important;
+      border-radius: 50% !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      cursor: pointer !important;
+      background: var(--tab-active-color) !important;
+      border: 2px solid rgba(255, 255, 255, 0.2) !important;
+      color: white !important;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+      backdrop-filter: blur(4px) !important;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+      z-index: 1000 !important;
+      opacity: 0.9 !important;
+    }
+
+    .floating-icon:hover {
+      transform: translateY(-4px) !important;
+      opacity: 1 !important;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25) !important;
+    }
+
+    .floating-icon .material-icons {
+      font-size: 24px !important;
+    }
+
+    .floating-icon img {
+      width: 32px !important;
+      height: 32px !important;
+      filter: brightness(1.2) !important;
+      transition: transform 0.3s ease !important;
+    }
+
+    .floating-icon:hover img {
+      transform: scale(1.1) !important;
+    }
+
+    .chat-overlay {
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      background: var(--popup-bg) !important;
+      z-index: 1000 !important;
+      display: flex !important;
+      flex-direction: column !important;
+    }
+
+    .chat-header {
+      padding: 16px !important;
+      border-bottom: 1px solid var(--modal-border) !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      gap: 12px !important;
+      position: relative !important;
+    }
+
+    .chat-header .material-icons {
+      font-size: 20px !important;
+    }
+    
+    .chat-header-title {
+      flex: 1 !important;
+      font-size: 16px !important;
+      font-weight: 600 !important;
+      margin-left: 8px !important;
+    }
+
+    .chat-body {
+      flex: 1 !important;
+      overflow-y: auto !important;
+      padding: 16px !important;
+    }
+
+    .chat-input-container {
+      padding: 16px !important;
+      border-top: 1px solid var(--modal-border) !important;
+      display: flex !important;
+      gap: 8px !important;
+      background: var(--popup-bg) !important;
+    }
+
+    .chat-input {
+      flex: 1 !important;
+      padding: 12px !important;
+      border-radius: 20px !important;
+      border: 1px solid var(--modal-border) !important;
+      background: var(--summary-bg) !important;
+      color: var(--popup-text) !important;
+      outline: none !important;
+    }
+
+    .chat-send-btn {
+      width: 40px !important;
+      height: 40px !important;
+      border-radius: 50% !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      background: var(--tab-active-color) !important;
+      color: white !important;
+      border: none !important;
+      cursor: pointer !important;
+      transition: transform 0.2s ease !important;
+      margin-left: 8px !important;
+    }
+
+    .chat-send-btn:hover {
+      transform: scale(1.05) !important;
+    }
+
+    .chat-back-btn {
+      position: absolute !important;
+      top: 16px !important;
+      right: 16px !important;
+      width: 32px !important;
+      height: 32px !important;
+      border-radius: 50% !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      background: transparent !important;
+      border: none !important;
+      color: var(--popup-text) !important;
+      cursor: pointer !important;
+      transition: transform 0.2s ease !important;
+    }
+
+    .chat-back-btn:hover {
+      transform: scale(1.1) !important;
+      background: rgba(0, 0, 0, 0.05) !important;
+    }
+
+    .message {
+      margin: 8px 0 !important;
+      max-width: 80% !important;
+      padding: 12px 16px !important;
+      border-radius: 12px !important;
+      font-size: 14px !important;
+      line-height: 1.5 !important;
+    }
+
+    .message.user {
+      background: var(--tab-active-color) !important;
+      color: white !important;
+      margin-left: auto !important;
+      border-bottom-right-radius: 4px !important;
+    }
+
+    .message.bot {
+      background: var(--summary-bg) !important;
+      color: var(--popup-text) !important;
+      margin-right: auto !important;
+      border-bottom-left-radius: 4px !important;
+    }/* Light theme icon styling */
 body:not(.dark-theme) #theme-toggle,
 body:not(.dark-theme) #history-icon {
   background: transparent !important;
@@ -434,6 +596,142 @@ body.dark-theme #summary {
 document.head.appendChild(themeStyle);
 
 document.addEventListener('DOMContentLoaded', function() {
+  // Chat functionality
+  const chatIcon = document.getElementById('chat-icon');
+  let chatOverlay = null;
+  
+  // Ensure chat icon exists before adding event listener
+  if (chatIcon) {
+    chatIcon.addEventListener('click', () => {
+      if (!chatOverlay) {
+        createChatOverlay();
+      }
+    });
+  }
+
+  // Function to show interactive buttons after analysis
+  function showInteractiveButtons() {
+    document.getElementById('downloadBtn').style.display = 'block';
+    chatIcon.style.display = 'block';
+    downloadBtn.style.display = 'block';
+    chatIcon.style.display = 'block';
+  }
+
+  // Function to hide interactive buttons
+  function hideInteractiveButtons() {
+    document.getElementById('downloadBtn').style.display = 'none';
+    chatIcon.style.display = 'none';
+  }
+
+  // Initially hide the buttons
+  hideInteractiveButtons();
+
+  function closeChatOverlay() {
+    if (chatOverlay && chatOverlay.parentElement) {
+      document.body.classList.remove('chat-overlay-open');
+      chatOverlay.parentElement.removeChild(chatOverlay);
+      chatOverlay = null;
+    }
+  }
+
+  function createChatOverlay() {
+    if (chatOverlay) return; // Prevent multiple overlays
+    
+    document.body.classList.add('chat-overlay-open');
+    chatOverlay = document.createElement('div');
+    chatOverlay.className = 'chat-overlay';
+    chatOverlay.innerHTML = `
+      <div class="chat-header">
+        <span class="chat-header-title">Chat with Repository</span>
+        <button class="chat-back-btn" id="close-chat-btn">
+          <span class="material-icons">close</span>
+        </button>
+      </div>
+      <div class="chat-body" id="chat-messages"></div>
+      <div class="chat-input-container">
+        <input type="text" class="chat-input" id="chat-input" placeholder="Ask about this repository...">
+        <button class="chat-send-btn" id="chat-send">
+          <span class="material-icons">send</span>
+        </button>
+      </div>
+    `;
+    document.body.appendChild(chatOverlay);
+
+    const chatInput = document.getElementById('chat-input');
+    const chatSend = document.getElementById('chat-send');
+    const chatMessages = document.getElementById('chat-messages');
+
+    function addMessage(text, isUser) {
+      const message = document.createElement('div');
+      message.className = `message ${isUser ? 'user' : 'bot'}`;
+      message.textContent = text;
+      chatMessages.appendChild(message);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function handleQuestion(question) {
+      addMessage(question, true);
+      
+      // Get current tab URL and extract repo info
+      chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+        const currentUrl = tabs[0].url;
+        if (!currentUrl.includes('github.com')) {
+          addMessage('Please navigate to a GitHub repository to use this feature.', false);
+          return;
+        }
+        
+        // Extract repo info from GitHub URL
+        chrome.tabs.sendMessage(tabs[0].id, {action: 'extractRepoInfo'}, async (response) => {
+          if (response) {
+            const { owner, repo } = response;
+            try {
+              const result = await queryRepo(owner, repo, question);
+              addMessage(result.answer, false);
+            } catch (error) {
+              addMessage('Sorry, I encountered an error processing your question.', false);
+            }
+          } else {
+            addMessage('Could not extract repository information. Please make sure you are on a GitHub repository page.', false);
+          }
+        });
+      });
+    }
+
+    chatInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter' && chatInput.value.trim()) {
+        const question = chatInput.value.trim();
+        chatInput.value = '';
+        handleQuestion(question);
+      }
+    });
+
+    // Add close button event listener
+    const closeBtn = document.getElementById('close-chat-btn');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', closeChatOverlay);
+    }
+
+    chatSend.addEventListener('click', () => {
+      if (chatInput.value.trim()) {
+        const question = chatInput.value.trim();
+        chatInput.value = '';
+        handleQuestion(question);
+      }
+    });
+  }
+
+  window.closeChatOverlay = function() {
+    if (chatOverlay && chatOverlay.parentElement) {
+      chatOverlay.parentElement.removeChild(chatOverlay);
+      chatOverlay = null;
+    }
+  }
+
+  chatIcon.addEventListener('click', () => {
+    if (!chatOverlay) {
+      createChatOverlay();
+    }
+  });
 // THEME TOGGLE UI - Original positioning with improved animations
 const themeToggle = document.createElement('button');
 themeToggle.id = 'theme-toggle';

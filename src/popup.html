@@ -19,6 +19,31 @@
       min-height: 480px;
       min-width: 340px;
       max-width: 380px;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+    .download-container {
+      margin-top: 16px;
+      margin-bottom: 16px;
+    }
+    #downloadBtn {
+      width: 100%;
+      padding: 12px;
+      font-size: 14px;
+      border-radius: 8px;
+      background: var(--tab-active-color) !important;
+      color: white !important;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    #downloadBtn:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+    }
+    .button-container {
+      padding: 0 16px;
     }
     #ask-repo {
       padding: 16px;
@@ -80,19 +105,41 @@
       font-size: 14px;
       line-height: 1.6;
     }
+    .chat-icon-btn {
+      width: 40px;
+      height: 40px;
+      padding: 8px;
+      border-radius: 8px;
+      background: var(--tab-active-color) !important;
+      color: white !important;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+    }
+    .chat-icon-btn:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+    }
+    .chat-icon-btn img {
+      width: 24px;
+      height: 24px;
+      filter: brightness(0) invert(1);
+    }
   </style>
 </head>
 <body>
   <div id="main">
     <img src="../icons/history.png" id="history-icon" title="View history">
+
     <div class="header">
       <div class="logo">
         <img src="../icons/icon48.png" alt="Repo Summarizer">
       </div>
       <h2>Repo Summarizer</h2>
       <p class="subtitle">AI-powered GitHub analysis</p>
-      
-
     </div>
     
     <div class="button-container">
@@ -102,22 +149,19 @@
     </div>
     
     <div id="summary"></div>
-
-    <div id="ask-repo" style="display:none;">
-      <div class="ask-header">Ask about Repository</div>
-      <div class="ask-input-container">
-        <input id="askInput" type="text" placeholder="Ask a question about this repo...">
-        <button id="askBtn">
-          <span class="material-icons">send</span>
+    
+    <div class="button-container download-container">
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <button id="downloadBtn" style="flex: 1;">
+          📄 Download Project Report
+        </button>
+        <button id="chat-icon" class="chat-icon-btn" title="Chat with Repository">
+          <img src="../icons/chat.png" alt="Chat">
         </button>
       </div>
-      <div id="askResult"></div>
     </div>
     
-    <button id="downloadBtn" style="display:none;">
-      📄 Download Project Report
-    </button>
-    <button id="clearSessionBtn" style="display:none;">🧹</button>
+    <!-- <button id="clearSessionBtn">🧹</button> -->
   </div>
   <script src="popup.js"></script>
 </body>

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any, Tuple
@@ -8,7 +8,6 @@ import hashlib
 import requests
 import numpy as np
 
-# RAG dependencies
 try:
     import chromadb
     from chromadb.config import Settings as ChromaSettings
@@ -20,9 +19,6 @@ try:
     from sentence_transformers import SentenceTransformer
 except Exception:  # pragma: no cover
     SentenceTransformer = None
-
-# You can set your API URL here (pointing to the ai backend)
-AI_BACKEND_URL = "https://xtension-alpha.vercel.app/api/summarize"
 
 # Load environment variables
 from dotenv import load_dotenv
@@ -48,76 +44,6 @@ class RepoInfo(BaseModel):
     repo: str
     owner: str
     description: str
-
-@app.post("/summarize")
-def summarize_repo(info: RepoInfo):
-    # Fetch README from GitHub
-    readme = ""
-    try:
-        r = requests.get(f"https://api.github.com/repos/{info.owner}/{info.repo}/readme", headers={"Accept": "application/vnd.github.v3.raw"}, timeout=15)
-        if r.ok:
-            readme = r.text
-    except Exception:
-        pass
-
-    # Fetch file tree from GitHub (optional, for future use)
-    # tree = []
-    # try:
-    #     t = requests.get(f"https://api.github.com/repos/{info.owner}/{info.repo}/git/trees/master?recursive=1", timeout=15)
-    #     if t.ok:
-    #         tree = t.json().get("tree", [])
-    # except Exception:
-    #     pass
-
-    summary_prompt = (
-        f"Summarize the following GitHub repository in a concise paragraph. "
-        f"Focus only on the project's purpose, main features, and how it is organized. "
-        f"Ignore any information about funding, badges, external links, or unrelated content.\n\n"
-        f"Repository: {info.owner}/{info.repo}\n"
-        f"Description: {info.description}\n"
-        f"README: {readme[:2000]}"
-    )
-
-    paper_prompt = (
-        f"Write a one-page project overview for the following GitHub repository. "
-        f"Include only the following sections:\n"
-        f"- Project Name\n"
-        f"- Purpose\n"
-        f"- Main Features\n"
-        f"- File/Folder Structure (if available)\n"
-        f"- Key Technologies Used\n"
-        f"- How to Use or Run the Project\n"
-        f"- Contribution Guidelines (if available)\n"
-        f"- License\n"
-        f"Do not include information about funding, badges, external links, or unrelated content. "
-        f"Be clear, concise, and professional.\n\n"
-        f"Repository: {info.owner}/{info.repo}\n"
-        f"Description: {info.description}\n"
-        f"README: {readme[:4000]}"
-    )
-
-    response = requests.post(
-        AI_BACKEND_URL,
-        json = {
-            "repo": info.repo,
-            "owner": info.owner,
-            "description": info.description,
-            "readme": readme,
-            "summary_prompt": summary_prompt,
-            "paper_prompt": paper_prompt,
-        },
-        timeout = 60
-    )
-    response.raise_for_status()
-    data = response.json()
-    return {
-        "summary": data.get("summary", ""),
-        "project_paper": data.get("project_paper", "")
-    }
-
-# -----------------------------
-# RAG: Retrieval-Augmented Assistant
-# -----------------------------
 
 # Configuration
 EMBEDDING_MODEL_NAME = os.environ.get("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
@@ -309,6 +235,19 @@ class BuildEmbeddingsResponse(BaseModel):
     num_files_indexed: int
     num_chunks_indexed: int
     took_seconds: float
+
+
+def check_if_indexed(owner: str, repo: str, branch: Optional[str] = None) -> bool:
+    """Check if repository has already been indexed"""
+    try:
+        branch = branch or get_default_branch(owner, repo)
+        repo_id = get_repo_id(owner, repo, branch)
+        files_coll, _ = get_or_create_collections(repo_id)
+        # Check if collection has any documents
+        result = files_coll.get(limit=1)
+        return len(result.get("ids", [])) > 0
+    except Exception:
+        return False
 
 
 @app.post("/build_embeddings", response_model=BuildEmbeddingsResponse)
@@ -553,6 +492,225 @@ def query_repo(req: QueryRequest):
         )
 
     return QueryResponse(answer=answer_text, references=refs)
+
+
+def _query_for_summary(owner: str, repo: str, branch: str, question: str, top_chunks: int = 20) -> str:
+    """Internal function to query RAG system for summary generation"""
+    repo_id = get_repo_id(owner, repo, branch)
+    
+    try:
+        model = get_embedding_model()
+        query_emb = model.encode([question], convert_to_numpy=True, show_progress_bar=False)[0]
+        
+        # Retrieve relevant files and chunks
+        file_res = _query_chroma_files(repo_id, query_emb, top_files=10)
+        file_paths: List[str] = []
+        if file_res and file_res.get("metadatas"):
+            for meta in file_res["metadatas"][0]:
+                if meta and meta.get("file_path"):
+                    file_paths.append(meta["file_path"])
+        
+        per_file = max(1, top_chunks // max(1, len(file_paths) or 1))
+        chunk_hits = _query_chroma_chunks(repo_id, query_emb, file_paths, per_file)
+        top_chunks_data = chunk_hits[:top_chunks]
+        
+        if top_chunks_data:
+            return _format_context(top_chunks_data)
+        else:
+            return "No relevant code context found."
+    except Exception as e:
+        return f"Error retrieving context: {str(e)}"
+
+
+@app.post("/summarize")
+def summarize_repo(info: RepoInfo):
+    """
+    Enhanced summarization using RAG system to analyze actual code
+    """
+    # Step 1: Check if repo is already indexed
+    branch = get_default_branch(info.owner, info.repo)
+    is_indexed = check_if_indexed(info.owner, info.repo, branch)
+    
+    # Step 2: Build embeddings if not indexed
+    if not is_indexed:
+        try:
+            build_req = BuildEmbeddingsRequest(
+                owner=info.owner,
+                repo=info.repo,
+                branch=branch
+            )
+            build_result = build_embeddings(build_req)
+            print(f"Indexed {build_result.num_files_indexed} files in {build_result.took_seconds}s")
+        except Exception as e:
+            # Fallback to README-only if indexing fails
+            print(f"Warning: Failed to index repository: {e}")
+            return _fallback_readme_summary(info)
+    
+    # Step 3: Query RAG system for different aspects
+    try:
+        # Get README for basic info
+        readme = ""
+        try:
+            r = requests.get(
+                f"https://api.github.com/repos/{info.owner}/{info.repo}/readme",
+                headers={"Accept": "application/vnd.github.v3.raw"},
+                timeout=15
+            )
+            if r.ok:
+                readme = r.text[:2000]
+        except Exception:
+            pass
+        
+        # Query for architecture and main features
+        architecture_context = _query_for_summary(
+            info.owner, info.repo, branch,
+            "What is the main architecture, frameworks, and key technical components of this project?",
+            top_chunks=15
+        )
+        
+        # Query for entry points and structure
+        structure_context = _query_for_summary(
+            info.owner, info.repo, branch,
+            "What are the main entry points, file structure, and how is the project organized?",
+            top_chunks=10
+        )
+        
+        # Generate enhanced summary using Groq
+        from groq import Groq
+        api_key = os.environ.get("GROQ_API_KEY") or os.environ.get("API_KEY")
+        if not api_key:
+            return {"summary": "API key not configured", "project_paper": ""}
+        
+        client = Groq(api_key=api_key)
+        
+        # Generate concise summary
+        summary_prompt = f"""Based on the actual code analysis of the GitHub repository {info.owner}/{info.repo}, create a concise 2-3 paragraph summary.
+
+Repository Description: {info.description}
+
+README Excerpt:
+{readme}
+
+Code Analysis - Architecture & Components:
+{architecture_context[:3000]}
+
+Code Analysis - Project Structure:
+{structure_context[:2000]}
+
+Instructions:
+- Focus on what the project actually does based on the code
+- Mention the main technologies/frameworks found in the code
+- Describe the architecture and how components are organized
+- Be specific and technical, avoiding generic statements
+- Keep it concise (2-3 paragraphs max)
+"""
+        
+        summary_completion = client.chat.completions.create(
+            messages=[{"role": "user", "content": summary_prompt}],
+            model="llama-3.3-70b-versatile",
+            temperature=0.3,
+            stream=False,
+        )
+        summary = summary_completion.choices[0].message.content
+        
+        # Generate detailed project paper
+        paper_prompt = f"""Based on the actual code analysis of {info.owner}/{info.repo}, create a comprehensive one-page project overview.
+
+Repository Description: {info.description}
+
+README Content:
+{readme}
+
+Code Analysis - Architecture & Technologies:
+{architecture_context[:4000]}
+
+Code Analysis - Project Structure:
+{structure_context[:2500]}
+
+Create a detailed overview with these sections:
+1. **Project Name and Purpose**: What problem does it solve?
+2. **Technical Architecture**: Based on actual code structure
+3. **Key Technologies & Frameworks**: Found in the codebase
+4. **Main Features**: Derived from code analysis
+5. **File/Folder Structure**: Major components and their roles
+6. **How to Use/Run**: Based on configuration files and entry points
+7. **Development Setup**: Dependencies and requirements found in code
+8. **Contribution Guidelines**: If mentioned in README or docs
+
+Be specific and technical. Reference actual files and components found in the code.
+"""
+        
+        paper_completion = client.chat.completions.create(
+            messages=[{"role": "user", "content": paper_prompt}],
+            model="llama-3.3-70b-versatile",
+            temperature=0.3,
+            stream=False,
+        )
+        project_paper = paper_completion.choices[0].message.content
+        
+        return {
+            "summary": summary,
+            "project_paper": project_paper,
+            "indexed": True,
+            "branch": branch
+        }
+        
+    except Exception as e:
+        print(f"Error in RAG-based summarization: {e}")
+        return _fallback_readme_summary(info)
+
+
+def _fallback_readme_summary(info: RepoInfo):
+    """Fallback to README-only summary if RAG fails"""
+    readme = ""
+    try:
+        r = requests.get(
+            f"https://api.github.com/repos/{info.owner}/{info.repo}/readme",
+            headers={"Accept": "application/vnd.github.v3.raw"},
+            timeout=15
+        )
+        if r.ok:
+            readme = r.text
+    except Exception:
+        pass
+    
+    from groq import Groq
+    api_key = os.environ.get("GROQ_API_KEY") or os.environ.get("API_KEY")
+    if not api_key:
+        return {"summary": "API key not configured", "project_paper": ""}
+    
+    client = Groq(api_key=api_key)
+    
+    summary_prompt = f"""Summarize this GitHub repository concisely:
+Repository: {info.owner}/{info.repo}
+Description: {info.description}
+README: {readme[:2000]}
+"""
+    
+    summary = client.chat.completions.create(
+        messages=[{"role": "user", "content": summary_prompt}],
+        model="llama-3.3-70b-versatile",
+        stream=False,
+    ).choices[0].message.content
+    
+    paper_prompt = f"""Create a project overview for:
+Repository: {info.owner}/{info.repo}
+Description: {info.description}
+README: {readme[:4000]}
+"""
+    
+    project_paper = client.chat.completions.create(
+        messages=[{"role": "user", "content": paper_prompt}],
+        model="llama-3.3-70b-versatile",
+        stream=False,
+    ).choices[0].message.content
+    
+    return {
+        "summary": summary,
+        "project_paper": project_paper,
+        "indexed": False
+    }
+
 
 if __name__ == "__main__":
     import uvicorn

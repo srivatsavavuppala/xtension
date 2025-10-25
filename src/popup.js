@@ -278,7 +278,34 @@
   document.head.appendChild(style);
 })();
 
-// Inject theme CSS at the very top
+function showInteractiveButtons() {
+  const downloadBtn = document.getElementById('downloadBtn');
+  const chatIcon = document.getElementById('chat-icon');
+  if (downloadBtn) {
+    downloadBtn.style.display = 'block';
+  }
+  if (chatIcon) {
+    chatIcon.style.display = 'block';
+  }
+}
+
+function hideInteractiveButtons() {
+  const downloadBtn = document.getElementById('downloadBtn');
+  const chatIcon = document.getElementById('chat-icon');
+  if (downloadBtn) downloadBtn.style.display = 'none'; 
+  if (chatIcon) chatIcon.style.display = 'none';
+}
+
+function closeChatOverlay() {
+  if (chatOverlay && chatOverlay.parentElement) {
+    document.body.classList.remove('chat-overlay-open');
+    chatOverlay.parentElement.removeChild(chatOverlay);
+    chatOverlay = null;
+    // Save state that chat is closed
+    chrome.storage.local.set({ chatOverlayOpen: false });
+  }
+}
+
 const themeStyle = document.createElement('style');
 themeStyle.textContent = `
 body {
@@ -635,27 +662,30 @@ hideInteractiveButtons();
   }
 
   function createChatOverlay() {
-    if (chatOverlay) return; // Prevent multiple overlays
-    
-    document.body.classList.add('chat-overlay-open');
-    chatOverlay = document.createElement('div');
-    chatOverlay.className = 'chat-overlay';
-    chatOverlay.innerHTML = `
-      <div class="chat-header">
-        <span class="chat-header-title">Chat with Repository</span>
-        <button class="chat-back-btn" id="close-chat-btn">
-          <span class="material-icons">close</span>
-        </button>
-      </div>
-      <div class="chat-body" id="chat-messages"></div>
-      <div class="chat-input-container">
-        <input type="text" class="chat-input" id="chat-input" placeholder="Ask about this repository...">
-        <button class="chat-send-btn" id="chat-send">
-          <span class="material-icons">send</span>
-        </button>
-      </div>
-    `;
-    document.body.appendChild(chatOverlay);
+  if (chatOverlay) return; // Prevent multiple overlays
+  
+  // Save state that chat is open
+  chrome.storage.local.set({ chatOverlayOpen: true });
+  
+  document.body.classList.add('chat-overlay-open');
+  chatOverlay = document.createElement('div');
+  chatOverlay.className = 'chat-overlay';
+  chatOverlay.innerHTML = `
+    <div class="chat-header">
+      <span class="chat-header-title">Chat with Repository</span>
+      <button class="chat-back-btn" id="close-chat-btn">
+        <span class="material-icons">close</span>
+      </button>
+    </div>
+    <div class="chat-body" id="chat-messages"></div>
+    <div class="chat-input-container">
+      <input type="text" class="chat-input" id="chat-input" placeholder="Ask about this repository...">
+      <button class="chat-send-btn" id="chat-send">
+        <span class="material-icons">send</span>
+      </button>
+    </div>
+  `;
+  document.body.appendChild(chatOverlay);
 
     const chatInput = document.getElementById('chat-input');
     const chatSend = document.getElementById('chat-send');
@@ -1045,54 +1075,328 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
     return data;
   }
 
- function renderQueryResult(result) {
-    if (!askResult) return;
+function renderQueryResult(result) {
+  if (!askResult) return;
+  
+  // Parse the answer to identify citation markers like [1], [2], etc.
+  let answerText = result.answer || 'No answer available';
+  
+  // Create citation lookup map
+  const citationMap = {};
+  if (result.references && result.references.length > 0) {
+    result.references.forEach((ref, idx) => {
+      citationMap[idx + 1] = ref;
+    });
+  }
+  
+  // Replace citation markers with interactive badges
+  answerText = answerText.replace(/\[(\d+)\]/g, (match, num) => {
+    const citation = citationMap[parseInt(num)];
+    if (citation) {
+      return `<span class="citation-badge" data-citation="${num}" title="Click to view code" style="cursor: pointer;">
+        <sup class="citation-number" style="color: var(--tab-active-color); font-weight: 600; padding: 2px 4px; border-radius: 4px; background: rgba(102, 126, 234, 0.1);">[${num}]</sup>
+      </span>`;
+    }
+    return match;
+  });
+  
+  const answerHtml = `
+    <div class="answer-container" style="background: var(--summary-bg); padding: 16px; border-radius: 8px; margin-bottom: 12px; border-left: 3px solid var(--tab-active-color);">
+      <div class="answer-text" style="white-space: pre-wrap; line-height: 1.8; color: var(--modal-title);">${answerText}</div>
+    </div>
     
-    const answerHtml = `
-      <div style="background: var(--summary-bg); padding: 16px; border-radius: 8px; margin-bottom: 12px; border-left: 3px solid var(--tab-active-color);">
-        <div style="white-space: pre-wrap; line-height: 1.6; color: var(--modal-title);">${result.answer || 'No answer available'}</div>
+    <div id="citation-preview" style="display: none; background: var(--modal-bg); border: 1px solid var(--modal-border); border-radius: 8px; padding: 16px; margin-bottom: 12px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <span style="font-weight: 600; color: var(--modal-title); font-size: 13px;">📄 Code Reference</span>
+        <button id="close-preview" style="background: none; border: none; color: var(--modal-close); cursor: pointer; font-size: 18px;">×</button>
       </div>
-    `;
-    
-    let refsHtml = '';
-    if (result.references && result.references.length > 0) {
-      const refItems = result.references.map((r, idx) => {
-        const label = `${r.file_path}:${r.start_line}-${r.end_line}`;
-        const href = r.url || '#';
-        return `
-          <a href="${href}" target="_blank" style="
+      <div id="preview-content" style="font-family: 'Courier New', monospace; font-size: 12px; background: var(--summary-bg); padding: 12px; border-radius: 6px; overflow-x: auto; max-height: 200px; overflow-y: auto;">
+      </div>
+      <a id="preview-link" target="_blank" style="display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; color: var(--tab-active-color); text-decoration: none; font-size: 12px;">
+        <span>View in GitHub</span>
+        <span class="material-icons" style="font-size: 14px;">open_in_new</span>
+      </a>
+    </div>
+  `;
+  
+  let refsHtml = '';
+  if (result.references && result.references.length > 0) {
+    const refItems = result.references.map((r, idx) => {
+      const label = `${r.file_path}`;
+      const lines = `L${r.start_line}-${r.end_line}`;
+      const href = r.url || '#';
+      
+      return `
+        <div class="reference-item" data-ref-id="${idx + 1}" style="
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 12px;
+          margin: 6px 0;
+          background: var(--modal-bg);
+          border: 1px solid var(--modal-border);
+          border-radius: 8px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        " onmouseover="this.style.borderColor='var(--tab-active-color)'; this.style.transform='translateX(4px)';" onmouseout="this.style.borderColor='var(--modal-border)'; this.style.transform='translateX(0)';">
+          
+          <span style="
+            background: var(--tab-active-color);
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
             display: flex;
             align-items: center;
-            gap: 8px;
-            padding: 8px 12px;
-            margin: 4px 0;
-            background: var(--modal-bg);
-            border: 1px solid var(--modal-border);
-            border-radius: 6px;
-            text-decoration: none;
-            color: var(--tab-active-color);
-            font-size: 13px;
-            transition: all 0.2s ease;
-          " onmouseover="this.style.borderColor='var(--tab-active-color)'; this.style.transform='translateX(4px)';" onmouseout="this.style.borderColor='var(--modal-border)'; this.style.transform='translateX(0)';">
-            <span style="font-weight: 600;">[${idx + 1}]</span>
-            <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${label}</span>
-            <span class="material-icons" style="font-size: 16px;">open_in_new</span>
-          </a>
-        `;
-      }).join('');
-      
-      refsHtml = `
-        <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--modal-border);">
-          <div style="font-weight: 600; margin-bottom: 8px; color: var(--modal-title); font-size: 13px;">📚 References (${result.references.length})</div>
-          ${refItems}
+            justify-content: center;
+            font-weight: 600;
+            font-size: 11px;
+            flex-shrink: 0;
+          ">${idx + 1}</span>
+          
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-weight: 600; font-size: 13px; color: var(--modal-title); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${label}</div>
+            <div style="font-size: 11px; color: var(--empty-desc); margin-top: 2px;">${lines}</div>
+          </div>
+          
+          <div style="display: flex; gap: 8px; flex-shrink: 0;">
+            <button class="preview-ref-btn" data-ref-id="${idx + 1}" style="
+              background: var(--summary-bg);
+              border: 1px solid var(--modal-border);
+              color: var(--modal-title);
+              padding: 6px 10px;
+              border-radius: 6px;
+              font-size: 11px;
+              cursor: pointer;
+              display: flex;
+              align-items: center;
+              gap: 4px;
+              transition: all 0.2s ease;
+            " onmouseover="this.style.background='var(--tab-active-color)'; this.style.color='white'; this.style.borderColor='var(--tab-active-color)';" onmouseout="this.style.background='var(--summary-bg)'; this.style.color='var(--modal-title)'; this.style.borderColor='var(--modal-border)';">
+              <span class="material-icons" style="font-size: 14px;">visibility</span>
+              Preview
+            </button>
+            
+            <a href="${href}" target="_blank" style="
+              background: var(--tab-active-color);
+              color: white;
+              padding: 6px 10px;
+              border-radius: 6px;
+              font-size: 11px;
+              text-decoration: none;
+              display: flex;
+              align-items: center;
+              gap: 4px;
+              transition: all 0.2s ease;
+            " onmouseover="this.style.opacity='0.9';" onmouseout="this.style.opacity='1';">
+              <span class="material-icons" style="font-size: 14px;">open_in_new</span>
+              Open
+            </a>
+          </div>
         </div>
       `;
-    }
+    }).join('');
     
-    askResult.innerHTML = answerHtml + refsHtml;
-    askResult.scrollTop = 0;
+    refsHtml = `
+      <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--modal-border);">
+        <div style="font-weight: 600; margin-bottom: 12px; color: var(--modal-title); font-size: 14px; display: flex; align-items: center; gap: 8px;">
+          <span class="material-icons" style="font-size: 18px;">link</span>
+          Code References (${result.references.length})
+        </div>
+        ${refItems}
+      </div>
+    `;
   }
+  
+  askResult.innerHTML = answerHtml + refsHtml;
+  askResult.scrollTop = 0;
+  
+  // CRITICAL: Add event listeners AFTER innerHTML is set
+  // Add event listeners for citation badges in the answer
+  const citationBadges = askResult.querySelectorAll('.citation-badge');
+  citationBadges.forEach(badge => {
+    badge.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const citationNum = parseInt(e.currentTarget.dataset.citation);
+      showCitationPreview(citationNum, result.references);
+    });
+  });
+  
+  // Add event listeners for preview buttons
+  const previewBtns = askResult.querySelectorAll('.preview-ref-btn');
+  previewBtns.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const refId = parseInt(e.currentTarget.dataset.refId);
+      showCitationPreview(refId, result.references);
+    });
+  });
+  
+  // Close preview button
+  const closePreviewBtn = askResult.querySelector('#close-preview');
+  if (closePreviewBtn) {
+    closePreviewBtn.addEventListener('click', () => {
+      document.getElementById('citation-preview').style.display = 'none';
+    });
+  }
+}
 
+// NEW FUNCTION: Add this AFTER renderQueryResult function
+async function showCitationPreview(citationNum, references) {
+  const preview = document.getElementById('citation-preview');
+  const previewContent = document.getElementById('preview-content');
+  const previewLink = document.getElementById('preview-link');
+  
+  if (!preview || !previewContent || !previewLink) return;
+  
+  const ref = references[citationNum - 1];
+  if (!ref) return;
+  
+  // Show loading state
+  preview.style.display = 'block';
+  previewContent.innerHTML = '<div style="text-align: center; color: var(--empty-desc);">Loading code preview...</div>';
+  
+  try {
+    // Fetch the code snippet from GitHub
+    const urlParts = ref.url.match(/github\.com\/([^\/]+)\/([^\/]+)\/blob\/([^\/]+)\/(.+?)#L(\d+)-L(\d+)/);
+    if (urlParts) {
+      const [, owner, repo, branch, filepath, startLine, endLine] = urlParts;
+      const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${filepath}`;
+      
+      const response = await fetch(rawUrl);
+      if (response.ok) {
+        const fullText = await response.text();
+        const lines = fullText.split('\n');
+        const start = parseInt(startLine) - 1;
+        const end = parseInt(endLine);
+        const snippet = lines.slice(start, end).join('\n');
+        
+        // Escape HTML
+        const highlighted = escapeHtml(snippet);
+        
+        previewContent.innerHTML = `
+          <div style="margin-bottom: 8px; font-size: 11px; color: var(--empty-desc); font-family: -apple-system, BlinkMacSystemFont, sans-serif;">
+            ${ref.file_path} (lines ${startLine}-${endLine})
+          </div>
+          <pre style="margin: 0; white-space: pre-wrap; word-wrap: break-word; line-height: 1.5; color: var(--modal-text);">${highlighted}</pre>
+        `;
+        previewLink.href = ref.url;
+      } else {
+        throw new Error('Failed to fetch code');
+      }
+    }
+  } catch (error) {
+    previewContent.innerHTML = `
+      <div style="text-align: center; color: #ef4444;">
+        Unable to load preview. <a href="${ref.url}" target="_blank" style="color: var(--tab-active-color);">View on GitHub</a>
+      </div>
+    `;
+  }
+}
+
+// NEW FUNCTION: Add this AFTER showCitationPreview
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// ENHANCED CSS: Add this at the very end of your DOMContentLoaded event listener
+// (around line 1800, just before the closing });)
+const enhancedCitationStyles = document.createElement('style');
+enhancedCitationStyles.textContent = `
+  .citation-badge {
+    cursor: pointer !important;
+    display: inline-block !important;
+    transition: all 0.2s ease !important;
+    margin: 0 2px !important;
+  }
+  
+  .citation-badge:hover {
+    transform: scale(1.15) !important;
+  }
+  
+  .citation-number {
+    color: var(--tab-active-color) !important;
+    font-weight: 600 !important;
+    text-decoration: none !important;
+    padding: 2px 6px !important;
+    border-radius: 4px !important;
+    background: rgba(102, 126, 234, 0.1) !important;
+    transition: all 0.2s ease !important;
+  }
+  
+  .citation-badge:hover .citation-number {
+    background: var(--tab-active-color) !important;
+    color: white !important;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3) !important;
+  }
+  
+  .citation-badge:active {
+    transform: scale(0.95) !important;
+  }
+  
+  .reference-item {
+    position: relative !important;
+  }
+  
+  .reference-item::before {
+    content: '' !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    width: 3px !important;
+    background: transparent !important;
+    border-radius: 3px !important;
+    transition: all 0.2s ease !important;
+  }
+  
+  .reference-item:hover::before {
+    background: var(--tab-active-color) !important;
+  }
+  
+  #citation-preview {
+    animation: slideDown 0.3s ease-out !important;
+  }
+  
+  @keyframes slideDown {
+    from {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  .preview-ref-btn {
+    position: relative !important;
+    overflow: hidden !important;
+  }
+  
+  .preview-ref-btn::after {
+    content: '' !important;
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    width: 0 !important;
+    height: 0 !important;
+    border-radius: 50% !important;
+    background: rgba(255, 255, 255, 0.5) !important;
+    transform: translate(-50%, -50%) !important;
+    transition: width 0.3s, height 0.3s !important;
+  }
+  
+  .preview-ref-btn:active::after {
+    width: 100px !important;
+    height: 100px !important;
+  }
+`;
+document.head.appendChild(enhancedCitationStyles);
   function initializeAskRepo(owner, repo) {
     if (!owner || !repo) return;
     showAskPanel();
@@ -1117,14 +1421,15 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
     }
   }
 
-  chrome.storage.local.get(['summaryStatus', 'summaryResult', 'summaryTab'], (result) => {
+  chrome.storage.local.get(['summaryStatus', 'summaryResult', 'summaryTab','chatOverlayOpen'], (result) => {
     if (result.summaryStatus === 'pending') {
       showMessage('Extracting repository information...', 'loading');
       setLoadingState(true);
-      downloadBtn.style.display = 'none';
+      hideInteractiveButtons();
     } else if (result.summaryStatus === 'done' && result.summaryResult) {
       showMessage(result.summaryResult.summary, 'success');
       projectPaper = result.summaryResult.project_paper;
+      showInteractiveButtons();
       downloadBtn.style.display = 'block';
       clearSessionBtn.style.display = 'block';
       downloadBtn.style.background = '#10b981';
@@ -1135,21 +1440,30 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
       downloadBtn.style.transform = 'translateY(0)';
       setLoadingState(false);
       if (result.summaryResult.owner && result.summaryResult.repo) {
-        initializeAskRepo(result.summaryResult.owner, result.summaryResult.repo);
-      } else {
-        hideAskPanel();
-      }
+      initializeAskRepo(result.summaryResult.owner, result.summaryResult.repo);
     } else {
-      // Hide and reset download button if not available
-      downloadBtn.style.display = 'none';
-      downloadBtn.style.background = '';
-      downloadBtn.style.color = '';
-      downloadBtn.style.border = '';
-      downloadBtn.style.boxShadow = '';
-      downloadBtn.style.opacity = '';
-      downloadBtn.style.transform = '';
+      hideAskPanel();
     }
-  });
+  if (result.chatOverlayOpen) {
+      createChatOverlay();
+    }
+  } else {
+    hideInteractiveButtons();
+  }
+});
+  // else {
+  //   // Hide and reset download button if not available
+  //   downloadBtn.style.display = 'none';
+  //   downloadBtn.style.background = '';
+  //   downloadBtn.style.color = '';
+  //   downloadBtn.style.border = '';
+  //   downloadBtn.style.boxShadow = '';
+  //   downloadBtn.style.opacity = '';
+  //   downloadBtn.style.transform = '';
+  //   hideInteractiveButtons();
+  // }
+// });
+
 
   summarizeBtn.addEventListener('click', async () => {
     try {
@@ -1221,14 +1535,9 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
             setLoadingState(false);
             showMessage(data.summary, 'success');
             projectPaper = data.project_paper;
-            if (downloadBtn) {
-                downloadBtn.style.display = 'block';
-            }
-            if (chatIcon) {
-                chatIcon.style.display = 'block';
-            }
-            if (clearSessionBtn) {
-                clearSessionBtn.style.display = 'block';
+            showInteractiveButtons();
+            if(clearSessionBtn){
+              clearSessionBtn.style.display = 'block'
             }
             chrome.storage.local.set({ summaryStatus: 'done', summaryResult: data, summaryTab: tabs[0].url });
             const now = Date.now();
@@ -1305,15 +1614,14 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
 
   if (clearSessionBtn) {
     clearSessionBtn.addEventListener('click', () => {
-      chrome.storage.local.remove(['summaryStatus', 'summaryResult', 'summaryTab'], () => {
+      chrome.storage.local.remove(['summaryStatus', 'summaryResult', 'summaryTab', 'chatOverlayOpen'], () => {
         showMessage('Session cleared. You can generate a new summary now.', 'info');
-        if (downloadBtn) {
-          downloadBtn.style.display = 'none';
-        }
-        if (clearSessionBtn) {
+        hideInteractiveButtons();
+        if (clearSessionBtn){
           clearSessionBtn.style.display = 'none';
         }
         hideAskPanel();
+        closeChatOverlay();
       });
     });
   }
@@ -2226,6 +2534,18 @@ function createFavoriteHistoryItem(item, index) {
   downloadBtn.style.opacity = '0';
   downloadBtn.style.transform = 'translateY(10px)';
   downloadBtn.style.transition = 'all 0.3s ease';
+
+  // Ensure consistent styling on revisit
+  chrome.storage.local.get('summaryStatus', (res) => {
+    if (res.summaryStatus === 'done') {
+      const downloadBtn = document.getElementById('downloadBtn');
+      if (downloadBtn) {
+        downloadBtn.style.background = '#10b981';
+        downloadBtn.style.color = 'white';
+        downloadBtn.style.border = 'none';
+      }
+    }
+  });
 });
 
 // Make showTreeOverlay globally available

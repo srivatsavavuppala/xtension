@@ -597,7 +597,9 @@ document.head.appendChild(themeStyle);
 
 document.addEventListener('DOMContentLoaded', function() {
   // Chat functionality
+  const downloadBtn = document.getElementById('downloadBtn');
   const chatIcon = document.getElementById('chat-icon');
+  const clearSessionBtn = document.getElementById('clearSessionBtn');
   let chatOverlay = null;
   
   // Ensure chat icon exists before adding event listener
@@ -611,20 +613,18 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Function to show interactive buttons after analysis
   function showInteractiveButtons() {
-    document.getElementById('downloadBtn').style.display = 'block';
-    chatIcon.style.display = 'block';
-    downloadBtn.style.display = 'block';
-    chatIcon.style.display = 'block';
+    if (downloadBtn) {
+      downloadBtn.style.display = 'block';
+    }
+    if (chatIcon) {
+      chatIcon.style.display = 'block';
+    }
   }
-
-  // Function to hide interactive buttons
   function hideInteractiveButtons() {
-    document.getElementById('downloadBtn').style.display = 'none';
-    chatIcon.style.display = 'none';
-  }
-
-  // Initially hide the buttons
-  hideInteractiveButtons();
+  if (downloadBtn) downloadBtn.style.display = 'none'; 
+  if (chatIcon) chatIcon.style.display = 'none';
+}
+hideInteractiveButtons();
 
   function closeChatOverlay() {
     if (chatOverlay && chatOverlay.parentElement) {
@@ -914,7 +914,7 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
 
 // Theme toggle positioning is now handled by CSS
   const summarizeBtn = document.getElementById('summarizeBtn');
-  const downloadBtn = document.getElementById('downloadBtn');
+  
   const summaryDiv = document.getElementById('summary');
   const historyIcon = document.getElementById('history-icon');
   const askPanel = document.getElementById('ask-repo');
@@ -1221,8 +1221,15 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
             setLoadingState(false);
             showMessage(data.summary, 'success');
             projectPaper = data.project_paper;
-            downloadBtn.style.display = 'block';
-            clearSessionBtn.style.display = 'block';
+            if (downloadBtn) {
+                downloadBtn.style.display = 'block';
+            }
+            if (chatIcon) {
+                chatIcon.style.display = 'block';
+            }
+            if (clearSessionBtn) {
+                clearSessionBtn.style.display = 'block';
+            }
             chrome.storage.local.set({ summaryStatus: 'done', summaryResult: data, summaryTab: tabs[0].url });
             const now = Date.now();
             const historyItem = {
@@ -1294,16 +1301,22 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
       showMessage('Error downloading file: ' + error.message, 'error');
     }
   });
-  const clearSessionBtn = document.getElementById('clearSessionBtn');
+  
 
-  clearSessionBtn.addEventListener('click', () => {
-    chrome.storage.local.remove(['summaryStatus', 'summaryResult', 'summaryTab'], () => {
-      showMessage('Session cleared. You can generate a new summary now.', 'info');
-      downloadBtn.style.display = 'none';
-      clearSessionBtn.style.display = 'none';
-      hideAskPanel();
+  if (clearSessionBtn) {
+    clearSessionBtn.addEventListener('click', () => {
+      chrome.storage.local.remove(['summaryStatus', 'summaryResult', 'summaryTab'], () => {
+        showMessage('Session cleared. You can generate a new summary now.', 'info');
+        if (downloadBtn) {
+          downloadBtn.style.display = 'none';
+        }
+        if (clearSessionBtn) {
+          clearSessionBtn.style.display = 'none';
+        }
+        hideAskPanel();
+      });
     });
-  });
+  }
 
   function trackVisitedRepo(url) {
     if (!url.includes('github.com')) return;
@@ -1844,12 +1857,18 @@ function createFavoriteHistoryItem(item, index) {
     if (loading) {
       summarizeBtn.disabled = true;
       summarizeBtn.classList.add('loading-button');
-      buttonText.style.opacity = '0';
-      downloadBtn.style.display = 'none';
+      if (buttonText) {
+        buttonText.style.opacity = '0';
+      }
+      if (downloadBtn) {
+        downloadBtn.style.display = 'none';
+      }
     } else {
       summarizeBtn.disabled = false;
       summarizeBtn.classList.remove('loading-button');
-      buttonText.style.opacity = '1';
+      if (buttonText) {
+        buttonText.style.opacity = '1';
+      }
     }
   }
 

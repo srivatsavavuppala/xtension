@@ -44,7 +44,7 @@ async function showRepoTree(owner, repo) {
         document.body.appendChild(overlay);
         
         // Fetch repository structure
-        const response = await fetch(`http://localhost:8000/tree/${owner}/${repo}`);
+        const response = await fetch(`https://xtension.onrender.com/tree/${owner}/${repo}`);
         const data = await response.json();
         
         if (data.error) {

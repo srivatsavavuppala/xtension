@@ -951,7 +951,7 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
   const askInput = document.getElementById('askInput');
   const askBtn = document.getElementById('askBtn');
   const askResult = document.getElementById('askResult');
-  let RAG_API_BASE = 'http://localhost:8000';
+  let RAG_API_BASE = 'https://xtension.onrender.com';
   chrome.storage.local.get({ ragApiBase: null }, (cfg) => {
     if (cfg && cfg.ragApiBase) {
       RAG_API_BASE = cfg.ragApiBase;
@@ -1519,7 +1519,7 @@ document.head.appendChild(enhancedCitationStyles);
             console.log('[Xtension] Still working... waiting for backend response.');
           }, 20000);
           try {
-            const response = await fetchWithTimeout('https://xtension-git-main-srivatsavavuppalas-projects.vercel.app/api/', {
+            const response = await fetchWithTimeout('/api/', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(repoInfo)

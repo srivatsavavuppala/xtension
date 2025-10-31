@@ -1519,7 +1519,7 @@ document.head.appendChild(enhancedCitationStyles);
             console.log('[Xtension] Still working... waiting for backend response.');
           }, 20000);
           try {
-            const response = await fetchWithTimeout('/api/', {
+            const response = await fetchWithTimeout('https://xtension-git-main-srivatsavavuppalas-projects.vercel.app/api/', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(repoInfo)

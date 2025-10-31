@@ -23,19 +23,24 @@ class RepoInfo(BaseModel):
     structure: List[FileInfo] = []
 
 class handler(BaseHTTPRequestHandler):
+    def _set_cors_headers(self):
+        """Set CORS headers for all responses"""
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept')
+        self.send_header('Access-Control-Max-Age', '3600')
+    
     def do_OPTIONS(self):
         """Handle CORS preflight requests"""
         self.send_response(200)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+        self._set_cors_headers()
         self.end_headers()
     
     def do_GET(self):
         """Health check endpoint"""
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
-        self.send_header('Access-Control-Allow-Origin', '*')
+        self._set_cors_headers()
         self.end_headers()
         
         response = {
@@ -194,7 +199,7 @@ class handler(BaseHTTPRequestHandler):
                                 file_node = {
                                     "name": parts[-1],
                                     "type": "file",
-                                    "icon": "�",
+                                    "icon": "📄",
                                     "children": []
                                 }
                                 
@@ -238,7 +243,7 @@ class handler(BaseHTTPRequestHandler):
                 tree_data = {
                     "name": data['repo'],
                     "type": "directory",
-                    "icon": "�",
+                    "icon": "📁",
                     "children": [{
                         "name": f"Error: {str(e)}",
                         "type": "file",
@@ -250,7 +255,7 @@ class handler(BaseHTTPRequestHandler):
             # Send successful response
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
-            self.send_header('Access-Control-Allow-Origin', '*')
+            self._set_cors_headers()
             self.end_headers()
             
             response = {
@@ -270,7 +275,7 @@ class handler(BaseHTTPRequestHandler):
         """Send error response with CORS headers"""
         self.send_response(status_code)
         self.send_header('Content-Type', 'application/json')
-        self.send_header('Access-Control-Allow-Origin', '*')
+        self._set_cors_headers()
         self.end_headers()
         
         error_response = {"error": message}

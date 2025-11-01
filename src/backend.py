@@ -36,6 +36,7 @@ try:
 except ValueError:
     PINECONE_MAX_INDEXES = 5
 MAX_INDEX_NAME_LENGTH = 45
+MAX_NAMESPACE_LENGTH = 63
 
 if not GROQ_API_KEY:
     print("Warning: GROQ_API_KEY not found in environment variables")
@@ -151,6 +152,18 @@ def _normalise_index_listing(indexes) -> set:
         if name:
             names.add(name)
     return names
+
+
+def _namespace_for_repo(repo_id: str) -> str:
+    namespace = repo_id.replace('/', '-').replace('@', '-').replace(' ', '-').replace('.', '-')
+    namespace = ''.join(c for c in namespace if c.isalnum() or c in {'-', '_'}).strip('-_')
+    if not namespace:
+        namespace = hashlib.sha1(repo_id.encode('utf-8')).hexdigest()[:20]
+    if len(namespace) > MAX_NAMESPACE_LENGTH:
+        namespace = namespace[:MAX_NAMESPACE_LENGTH].rstrip('-_')
+        if not namespace:
+            namespace = hashlib.sha1(repo_id.encode('utf-8')).hexdigest()[:20]
+    return namespace
 
 
 def get_or_create_index(index_name: str):
@@ -372,7 +385,7 @@ def check_if_indexed(owner: str, repo: str, branch: Optional[str] = None) -> boo
         }
 
         if use_namespace:
-            query_kwargs['namespace'] = repo_id
+            query_kwargs['namespace'] = _namespace_for_repo(repo_id)
 
         # Query to check if any vectors exist
         results = index.query(**query_kwargs)
@@ -391,8 +404,9 @@ def build_embeddings(req: BuildEmbeddingsRequest):
     files_index, _, files_use_namespace = get_or_create_index(f"files-{repo_id}")
     chunks_index, _, chunks_use_namespace = get_or_create_index(f"chunks-{repo_id}")
 
-    files_namespace = repo_id if files_use_namespace else None
-    chunks_namespace = repo_id if chunks_use_namespace else None
+    namespace = _namespace_for_repo(repo_id)
+    files_namespace = namespace if files_use_namespace else None
+    chunks_namespace = namespace if chunks_use_namespace else None
     
     model = get_embedding_model()
     files = list_repo_files(req.owner, req.repo, branch)
@@ -511,14 +525,15 @@ class QueryResponse(BaseModel):
 
 def _query_pinecone_files(repo_id: str, query_emb: np.ndarray, top_files: int):
     index, _, use_namespace = get_or_create_index(f"files-{repo_id}")
+    namespace = _namespace_for_repo(repo_id) if use_namespace else None
     query_kwargs = {
         'vector': query_emb.tolist(),
         'top_k': top_files,
         'include_metadata': True,
         'filter': {'repo_id': {'$eq': repo_id}},
     }
-    if use_namespace:
-        query_kwargs['namespace'] = repo_id
+    if namespace:
+        query_kwargs['namespace'] = namespace
     results = index.query(**query_kwargs)
     return results
 
@@ -526,6 +541,7 @@ def _query_pinecone_files(repo_id: str, query_emb: np.ndarray, top_files: int):
 def _query_pinecone_chunks(repo_id: str, query_emb: np.ndarray, file_paths: List[str], per_file: int) -> List[Dict[str, Any]]:
     index, _, use_namespace = get_or_create_index(f"chunks-{repo_id}")
     results_list: List[Dict[str, Any]] = []
+    namespace = _namespace_for_repo(repo_id) if use_namespace else None
     
     for path in file_paths:
         query_kwargs = {
@@ -537,8 +553,8 @@ def _query_pinecone_chunks(repo_id: str, query_emb: np.ndarray, file_paths: List
                 'file_path': {'$eq': path}
             }
         }
-        if use_namespace:
-            query_kwargs['namespace'] = repo_id
+        if namespace:
+            query_kwargs['namespace'] = namespace
         results = index.query(**query_kwargs)
         
         for match in results.get('matches', []):
@@ -620,6 +636,22 @@ def query_repo(req: QueryRequest):
         for match in file_res['matches']:
             if match.get('metadata') and match['metadata'].get('file_path'):
                 file_paths.append(match['metadata']['file_path'])
+
+    attempted_reindex = False
+    if not file_paths:
+        try:
+            build_embeddings(BuildEmbeddingsRequest(owner=req.owner, repo=req.repo, branch=branch))
+            attempted_reindex = True
+            file_res = _query_pinecone_files(repo_id, query_emb, req.top_files)
+            if file_res and file_res.get('matches'):
+                for match in file_res['matches']:
+                    if match.get('metadata') and match['metadata'].get('file_path'):
+                        file_paths.append(match['metadata']['file_path'])
+        except HTTPException as exc:
+            # Propagate capacity errors with clear message
+            if exc.status_code == 507:
+                raise
+            raise HTTPException(status_code=502, detail=f"Failed to (re)index repository: {exc.detail}") from exc
     
     # Stage 2: retrieve relevant chunks within those files
     per_file = max(1, req.top_chunks // max(1, len(file_paths) or 1))
@@ -627,7 +659,8 @@ def query_repo(req: QueryRequest):
     top_chunks = chunk_hits[:req.top_chunks]
     
     if not top_chunks:
-        return QueryResponse(answer="No relevant code found for your question.", references=[])
+        suffix = "" if attempted_reindex else " Try indexing the repository first."
+        return QueryResponse(answer=f"No relevant code found for your question.{suffix}", references=[])
     
     context_text = _format_context(top_chunks)
     answer_text = _call_llm(req.question, context_text)

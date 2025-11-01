@@ -29,6 +29,14 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 PINECONE_API_KEY = os.environ.get("PINECONE_API_KEY")
 PINECONE_ENVIRONMENT = os.environ.get("PINECONE_ENVIRONMENT", "us-east-1")
 
+PINECONE_FILES_INDEX = os.environ.get("PINECONE_FILES_INDEX", "xtension-files")
+PINECONE_CHUNKS_INDEX = os.environ.get("PINECONE_CHUNKS_INDEX", "xtension-chunks")
+try:
+    PINECONE_MAX_INDEXES = int(os.environ.get("PINECONE_MAX_INDEXES", "5"))
+except ValueError:
+    PINECONE_MAX_INDEXES = 5
+MAX_INDEX_NAME_LENGTH = 45
+
 if not GROQ_API_KEY:
     print("Warning: GROQ_API_KEY not found in environment variables")
 if not PINECONE_API_KEY:
@@ -121,22 +129,84 @@ def get_pinecone_client():
     return _pinecone_client
 
 
+def _sanitize_index_name(index_name: str) -> str:
+    name = index_name.lower().replace('/', '-').replace('_', '-').replace('@', '-')
+    name = ''.join(c for c in name if c.isalnum() or c == '-')
+    if not name:
+        name = "default-index"
+    if len(name) > MAX_INDEX_NAME_LENGTH:
+        name = name[:MAX_INDEX_NAME_LENGTH].rstrip('-')
+        if not name:
+            name = "default-index"
+    return name
+
+
+def _normalise_index_listing(indexes) -> set:
+    names = set()
+    for item in indexes:
+        if isinstance(item, dict):
+            name = item.get('name')
+        else:
+            name = getattr(item, 'name', None) or str(item)
+        if name:
+            names.add(name)
+    return names
+
+
 def get_or_create_index(index_name: str):
-    """Get or create a Pinecone index"""
+    """Get or create a Pinecone index.
+
+    Returns a tuple of (Index instance, resolved index name, uses_namespace flag).
+    """
     pc = get_pinecone_client()
-    
-    # Sanitize index name (Pinecone requirements: lowercase, alphanumeric, hyphens)
-    safe_index_name = index_name.lower().replace('/', '-').replace('_', '-').replace('@', '-')
-    safe_index_name = ''.join(c for c in safe_index_name if c.isalnum() or c == '-')
-    
-    # Check if index exists
-    existing_indexes = pc.list_indexes()
-    index_names = [idx['name'] for idx in existing_indexes]
-    
-    if safe_index_name not in index_names:
-        # Create new index with serverless spec
+    requested_name = _sanitize_index_name(index_name)
+
+    try:
+        existing_indexes = pc.list_indexes()
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to list Pinecone indexes: {exc}")
+
+    index_names = _normalise_index_listing(existing_indexes)
+
+    if requested_name in index_names:
+        return pc.Index(requested_name), requested_name, False
+
+    shared_mapping = {
+        'files': _sanitize_index_name(PINECONE_FILES_INDEX),
+        'chunks': _sanitize_index_name(PINECONE_CHUNKS_INDEX),
+    }
+
+    index_type = None
+    if requested_name.startswith('files-'):
+        index_type = 'files'
+    elif requested_name.startswith('chunks-'):
+        index_type = 'chunks'
+
+    target_name = requested_name
+    requires_namespace = False
+
+    if index_type and index_type in shared_mapping:
+        # Prefer shared index for this type unless a repo-specific one already exists
+        shared_name = shared_mapping[index_type]
+        if shared_name in index_names:
+            return pc.Index(shared_name), shared_name, True
+        target_name = shared_name
+        requires_namespace = True
+
+    if target_name in index_names:
+        return pc.Index(target_name), target_name, requires_namespace
+
+    if len(index_names) >= PINECONE_MAX_INDEXES and target_name not in index_names:
+        detail = (
+            "Reached Pinecone serverless index limit. Delete unused indexes in your Pinecone "
+            "project or set PINECONE_FILES_INDEX/PINECONE_CHUNKS_INDEX to reuse an existing "
+            "index."
+        )
+        raise HTTPException(status_code=507, detail=detail)
+
+    try:
         pc.create_index(
-            name=safe_index_name,
+            name=target_name,
             dimension=EMBEDDING_DIMENSION,
             metric='cosine',
             spec=ServerlessSpec(
@@ -144,10 +214,19 @@ def get_or_create_index(index_name: str):
                 region=PINECONE_ENVIRONMENT
             )
         )
-        # Wait for index to be ready
         time.sleep(1)
-    
-    return pc.Index(safe_index_name), safe_index_name
+    except Exception as exc:
+        error_text = str(exc).lower()
+        if "max serverless indexes" in error_text or "forbidden" in error_text:
+            detail = (
+                "Pinecone denied index creation due to project limits. Reduce existing indexes "
+                "or point PINECONE_FILES_INDEX/PINECONE_CHUNKS_INDEX to an existing index "
+                "name."
+            )
+            raise HTTPException(status_code=507, detail=detail) from exc
+        raise HTTPException(status_code=502, detail=f"Failed to create Pinecone index '{target_name}': {exc}") from exc
+
+    return pc.Index(target_name), target_name, requires_namespace
 
 
 def get_repo_id(owner: str, repo: str, branch: Optional[str]) -> str:
@@ -283,14 +362,20 @@ def check_if_indexed(owner: str, repo: str, branch: Optional[str] = None) -> boo
     try:
         branch = branch or get_default_branch(owner, repo)
         repo_id = get_repo_id(owner, repo, branch)
-        index, _ = get_or_create_index(f"files-{repo_id}")
-        
+        index, _, use_namespace = get_or_create_index(f"files-{repo_id}")
+
+        query_kwargs = {
+            'vector': [0.0] * EMBEDDING_DIMENSION,
+            'top_k': 1,
+            'include_metadata': True,
+            'filter': {'repo_id': {'$eq': repo_id}},
+        }
+
+        if use_namespace:
+            query_kwargs['namespace'] = repo_id
+
         # Query to check if any vectors exist
-        results = index.query(
-            vector=[0.0] * EMBEDDING_DIMENSION,
-            top_k=1,
-            include_metadata=True
-        )
+        results = index.query(**query_kwargs)
         return len(results.get('matches', [])) > 0
     except Exception:
         return False
@@ -303,8 +388,11 @@ def build_embeddings(req: BuildEmbeddingsRequest):
     repo_id = get_repo_id(req.owner, req.repo, branch)
     
     # Create separate indexes for files and chunks
-    files_index, files_index_name = get_or_create_index(f"files-{repo_id}")
-    chunks_index, chunks_index_name = get_or_create_index(f"chunks-{repo_id}")
+    files_index, _, files_use_namespace = get_or_create_index(f"files-{repo_id}")
+    chunks_index, _, chunks_use_namespace = get_or_create_index(f"chunks-{repo_id}")
+
+    files_namespace = repo_id if files_use_namespace else None
+    chunks_namespace = repo_id if chunks_use_namespace else None
     
     model = get_embedding_model()
     files = list_repo_files(req.owner, req.repo, branch)
@@ -341,7 +429,10 @@ def build_embeddings(req: BuildEmbeddingsRequest):
         batch_size = 100
         for i in range(0, len(file_vectors), batch_size):
             batch = file_vectors[i:i + batch_size]
-            files_index.upsert(vectors=batch)
+            upsert_kwargs = {'vectors': batch}
+            if files_namespace:
+                upsert_kwargs['namespace'] = files_namespace
+            files_index.upsert(**upsert_kwargs)
     
     # Process chunks
     chunk_vectors = []
@@ -374,12 +465,18 @@ def build_embeddings(req: BuildEmbeddingsRequest):
             
             # Batch upsert every 200 chunks
             if len(chunk_vectors) >= 200:
-                chunks_index.upsert(vectors=chunk_vectors)
+                upsert_kwargs = {'vectors': chunk_vectors}
+                if chunks_namespace:
+                    upsert_kwargs['namespace'] = chunks_namespace
+                chunks_index.upsert(**upsert_kwargs)
                 chunk_vectors = []
     
     # Upsert remaining chunks
     if chunk_vectors:
-        chunks_index.upsert(vectors=chunk_vectors)
+        upsert_kwargs = {'vectors': chunk_vectors}
+        if chunks_namespace:
+            upsert_kwargs['namespace'] = chunks_namespace
+        chunks_index.upsert(**upsert_kwargs)
     
     took = time.time() - start_time
     return BuildEmbeddingsResponse(
@@ -413,30 +510,36 @@ class QueryResponse(BaseModel):
 
 
 def _query_pinecone_files(repo_id: str, query_emb: np.ndarray, top_files: int):
-    index, _ = get_or_create_index(f"files-{repo_id}")
-    results = index.query(
-        vector=query_emb.tolist(),
-        top_k=top_files,
-        include_metadata=True,
-        filter={'repo_id': {'$eq': repo_id}}
-    )
+    index, _, use_namespace = get_or_create_index(f"files-{repo_id}")
+    query_kwargs = {
+        'vector': query_emb.tolist(),
+        'top_k': top_files,
+        'include_metadata': True,
+        'filter': {'repo_id': {'$eq': repo_id}},
+    }
+    if use_namespace:
+        query_kwargs['namespace'] = repo_id
+    results = index.query(**query_kwargs)
     return results
 
 
 def _query_pinecone_chunks(repo_id: str, query_emb: np.ndarray, file_paths: List[str], per_file: int) -> List[Dict[str, Any]]:
-    index, _ = get_or_create_index(f"chunks-{repo_id}")
+    index, _, use_namespace = get_or_create_index(f"chunks-{repo_id}")
     results_list: List[Dict[str, Any]] = []
     
     for path in file_paths:
-        results = index.query(
-            vector=query_emb.tolist(),
-            top_k=per_file,
-            include_metadata=True,
-            filter={
+        query_kwargs = {
+            'vector': query_emb.tolist(),
+            'top_k': per_file,
+            'include_metadata': True,
+            'filter': {
                 'repo_id': {'$eq': repo_id},
                 'file_path': {'$eq': path}
             }
-        )
+        }
+        if use_namespace:
+            query_kwargs['namespace'] = repo_id
+        results = index.query(**query_kwargs)
         
         for match in results.get('matches', []):
             results_list.append({

@@ -1,6 +1,5 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any, Tuple
 import os
@@ -28,7 +27,6 @@ load_dotenv()
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 PINECONE_API_KEY = os.environ.get("PINECONE_API_KEY")
 PINECONE_ENVIRONMENT = os.environ.get("PINECONE_ENVIRONMENT", "us-east-1")
-PINECONE_INDEX_NAME = os.environ.get("PINECONE_INDEX_NAME", "github-rag-index")
 
 if not GROQ_API_KEY:
     print("Warning: GROQ_API_KEY not found in environment variables")
@@ -37,53 +35,14 @@ if not PINECONE_API_KEY:
 
 app = FastAPI()
 
-# Allow CORS for extension with proper configuration
+# Allow CORS for extension
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins including chrome extensions
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"],
-    max_age=3600,
 )
-
-# Handle OPTIONS requests explicitly
-@app.options("/{path:path}")
-async def options_handler(path: str):
-    """Handle CORS preflight requests"""
-    return Response(status_code=204)
-
-# Add CORS headers middleware
-@app.middleware("http")
-async def add_cors_headers(request: Request, call_next):
-    """Add CORS headers to all responses, including preflight"""
-    if request.method == "OPTIONS":
-        response = Response(status_code=204)
-    else:
-        response = await call_next(request)
-
-    origin = request.headers.get("origin")
-    allow_origin = origin if origin else "*"
-    response.headers["Access-Control-Allow-Origin"] = allow_origin
-    response.headers["Access-Control-Allow-Credentials"] = "true"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-
-    request_headers = request.headers.get("access-control-request-headers")
-    if request_headers:
-        response.headers["Access-Control-Allow-Headers"] = request_headers
-    else:
-        response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Accept, X-Requested-With"
-
-    existing_vary = response.headers.get("Vary")
-    if existing_vary:
-        if "Origin" not in existing_vary:
-            response.headers["Vary"] = f"{existing_vary}, Origin"
-    else:
-        response.headers["Vary"] = "Origin"
-
-    response.headers.setdefault("Access-Control-Max-Age", "86400")
-    return response
 
 class RepoInfo(BaseModel):
     repo: str
@@ -97,7 +56,6 @@ GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 
 _embedding_model: Optional[SentenceTransformer] = None
 _pinecone_client = None
-_pinecone_index = None
 
 
 def get_embedding_model() -> SentenceTransformer:
@@ -120,40 +78,33 @@ def get_pinecone_client():
     return _pinecone_client
 
 
-def get_pinecone_index():
-    """Get or create the single Pinecone index"""
-    global _pinecone_index
-    if _pinecone_index is None:
-        pc = get_pinecone_client()
-        
-        # Check if index exists
-        existing_indexes = pc.list_indexes()
-        index_names = [idx['name'] for idx in existing_indexes]
-        
-        if PINECONE_INDEX_NAME not in index_names:
-            # Create new index with serverless spec
-            pc.create_index(
-                name=PINECONE_INDEX_NAME,
-                dimension=EMBEDDING_DIMENSION,
-                metric='cosine',
-                spec=ServerlessSpec(
-                    cloud='aws',
-                    region=PINECONE_ENVIRONMENT
-                )
-            )
-            # Wait for index to be ready
-            print(f"Creating index {PINECONE_INDEX_NAME}...")
-            time.sleep(5)
-        
-        _pinecone_index = pc.Index(PINECONE_INDEX_NAME)
+def get_or_create_index(index_name: str):
+    """Get or create a Pinecone index"""
+    pc = get_pinecone_client()
     
-    return _pinecone_index
-
-
-def get_namespace(owner: str, repo: str, branch: str, data_type: str) -> str:
-    """Generate namespace for organizing data within single index"""
-    # Format: owner-repo-branch-type (e.g., "facebook-react-main-files")
-    return f"{owner}-{repo}-{branch}-{data_type}".lower().replace('/', '-').replace('@', '-')
+    # Sanitize index name (Pinecone requirements: lowercase, alphanumeric, hyphens)
+    safe_index_name = index_name.lower().replace('/', '-').replace('_', '-').replace('@', '-')
+    safe_index_name = ''.join(c for c in safe_index_name if c.isalnum() or c == '-')
+    
+    # Check if index exists
+    existing_indexes = pc.list_indexes()
+    index_names = [idx['name'] for idx in existing_indexes]
+    
+    if safe_index_name not in index_names:
+        # Create new index with serverless spec
+        pc.create_index(
+            name=safe_index_name,
+            dimension=EMBEDDING_DIMENSION,
+            metric='cosine',
+            spec=ServerlessSpec(
+                cloud='aws',
+                region=PINECONE_ENVIRONMENT
+            )
+        )
+        # Wait for index to be ready
+        time.sleep(1)
+    
+    return pc.Index(safe_index_name), safe_index_name
 
 
 def get_repo_id(owner: str, repo: str, branch: Optional[str]) -> str:
@@ -288,19 +239,17 @@ def check_if_indexed(owner: str, repo: str, branch: Optional[str] = None) -> boo
     """Check if repository has already been indexed"""
     try:
         branch = branch or get_default_branch(owner, repo)
-        index = get_pinecone_index()
-        files_namespace = get_namespace(owner, repo, branch, "files")
+        repo_id = get_repo_id(owner, repo, branch)
+        index, _ = get_or_create_index(f"files-{repo_id}")
         
-        # Query to check if any vectors exist in this namespace
+        # Query to check if any vectors exist
         results = index.query(
-            namespace=files_namespace,
             vector=[0.0] * EMBEDDING_DIMENSION,
             top_k=1,
             include_metadata=True
         )
         return len(results.get('matches', [])) > 0
-    except Exception as e:
-        print(f"Error checking if indexed: {e}")
+    except Exception:
         return False
 
 
@@ -310,10 +259,9 @@ def build_embeddings(req: BuildEmbeddingsRequest):
     branch = req.branch or get_default_branch(req.owner, req.repo)
     repo_id = get_repo_id(req.owner, req.repo, branch)
     
-    # Get single index and define namespaces
-    index = get_pinecone_index()
-    files_namespace = get_namespace(req.owner, req.repo, branch, "files")
-    chunks_namespace = get_namespace(req.owner, req.repo, branch, "chunks")
+    # Create separate indexes for files and chunks
+    files_index, files_index_name = get_or_create_index(f"files-{repo_id}")
+    chunks_index, chunks_index_name = get_or_create_index(f"chunks-{repo_id}")
     
     model = get_embedding_model()
     files = list_repo_files(req.owner, req.repo, branch)
@@ -345,12 +293,12 @@ def build_embeddings(req: BuildEmbeddingsRequest):
         })
         num_files += 1
     
-    # Upsert files in batches to the files namespace
+    # Upsert files in batches
     if file_vectors:
         batch_size = 100
         for i in range(0, len(file_vectors), batch_size):
             batch = file_vectors[i:i + batch_size]
-            index.upsert(vectors=batch, namespace=files_namespace)
+            files_index.upsert(vectors=batch)
     
     # Process chunks
     chunk_vectors = []
@@ -381,14 +329,14 @@ def build_embeddings(req: BuildEmbeddingsRequest):
             })
             num_chunks += 1
             
-            # Batch upsert every 200 chunks to the chunks namespace
+            # Batch upsert every 200 chunks
             if len(chunk_vectors) >= 200:
-                index.upsert(vectors=chunk_vectors, namespace=chunks_namespace)
+                chunks_index.upsert(vectors=chunk_vectors)
                 chunk_vectors = []
     
     # Upsert remaining chunks
     if chunk_vectors:
-        index.upsert(vectors=chunk_vectors, namespace=chunks_namespace)
+        chunks_index.upsert(vectors=chunk_vectors)
     
     took = time.time() - start_time
     return BuildEmbeddingsResponse(
@@ -421,31 +369,30 @@ class QueryResponse(BaseModel):
     references: List[Reference]
 
 
-def _query_pinecone_files(owner: str, repo: str, branch: str, query_emb: np.ndarray, top_files: int):
-    index = get_pinecone_index()
-    files_namespace = get_namespace(owner, repo, branch, "files")
-    
+def _query_pinecone_files(repo_id: str, query_emb: np.ndarray, top_files: int):
+    index, _ = get_or_create_index(f"files-{repo_id}")
     results = index.query(
-        namespace=files_namespace,
         vector=query_emb.tolist(),
         top_k=top_files,
-        include_metadata=True
+        include_metadata=True,
+        filter={'repo_id': {'$eq': repo_id}}
     )
     return results
 
 
-def _query_pinecone_chunks(owner: str, repo: str, branch: str, query_emb: np.ndarray, file_paths: List[str], per_file: int) -> List[Dict[str, Any]]:
-    index = get_pinecone_index()
-    chunks_namespace = get_namespace(owner, repo, branch, "chunks")
+def _query_pinecone_chunks(repo_id: str, query_emb: np.ndarray, file_paths: List[str], per_file: int) -> List[Dict[str, Any]]:
+    index, _ = get_or_create_index(f"chunks-{repo_id}")
     results_list: List[Dict[str, Any]] = []
     
     for path in file_paths:
         results = index.query(
-            namespace=chunks_namespace,
             vector=query_emb.tolist(),
             top_k=per_file,
             include_metadata=True,
-            filter={'file_path': {'$eq': path}}
+            filter={
+                'repo_id': {'$eq': repo_id},
+                'file_path': {'$eq': path}
+            }
         )
         
         for match in results.get('matches', []):
@@ -515,12 +462,13 @@ def _call_llm(question: str, context: str) -> str:
 @app.post("/query", response_model=QueryResponse)
 def query_repo(req: QueryRequest):
     branch = req.branch or get_default_branch(req.owner, req.repo)
+    repo_id = get_repo_id(req.owner, req.repo, branch)
     
     model = get_embedding_model()
     query_emb = model.encode([req.question], convert_to_numpy=True, show_progress_bar=False)[0]
     
     # Stage 1: retrieve relevant files
-    file_res = _query_pinecone_files(req.owner, req.repo, branch, query_emb, req.top_files)
+    file_res = _query_pinecone_files(repo_id, query_emb, req.top_files)
     file_paths: List[str] = []
     if file_res and file_res.get('matches'):
         for match in file_res['matches']:
@@ -529,7 +477,7 @@ def query_repo(req: QueryRequest):
     
     # Stage 2: retrieve relevant chunks within those files
     per_file = max(1, req.top_chunks // max(1, len(file_paths) or 1))
-    chunk_hits = _query_pinecone_chunks(req.owner, req.repo, branch, query_emb, file_paths, per_file)
+    chunk_hits = _query_pinecone_chunks(repo_id, query_emb, file_paths, per_file)
     top_chunks = chunk_hits[:req.top_chunks]
     
     if not top_chunks:
@@ -561,11 +509,13 @@ def query_repo(req: QueryRequest):
 
 def _query_for_summary(owner: str, repo: str, branch: str, question: str, top_chunks: int = 20) -> str:
     """Internal function to query RAG system for summary generation"""
+    repo_id = get_repo_id(owner, repo, branch)
+    
     try:
         model = get_embedding_model()
         query_emb = model.encode([question], convert_to_numpy=True, show_progress_bar=False)[0]
         
-        file_res = _query_pinecone_files(owner, repo, branch, query_emb, top_files=10)
+        file_res = _query_pinecone_files(repo_id, query_emb, top_files=10)
         file_paths: List[str] = []
         if file_res and file_res.get('matches'):
             for match in file_res['matches']:
@@ -573,7 +523,7 @@ def _query_for_summary(owner: str, repo: str, branch: str, question: str, top_ch
                     file_paths.append(match['metadata']['file_path'])
         
         per_file = max(1, top_chunks // max(1, len(file_paths) or 1))
-        chunk_hits = _query_pinecone_chunks(owner, repo, branch, query_emb, file_paths, per_file)
+        chunk_hits = _query_pinecone_chunks(repo_id, query_emb, file_paths, per_file)
         top_chunks_data = chunk_hits[:top_chunks]
         
         if top_chunks_data:

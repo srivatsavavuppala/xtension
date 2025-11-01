@@ -121,33 +121,47 @@ def get_pinecone_client():
     return _pinecone_client
 
 
-def get_or_create_index(index_name: str):
-    """Get or create a Pinecone index"""
+def get_or_create_index(index_type: str = "files"):
+    """
+    Get or create a Pinecone index - uses shared indexes with namespaces
+    index_type: "files" or "chunks" - determines which shared index to use
+    """
     pc = get_pinecone_client()
     
-    # Sanitize index name (Pinecone requirements: lowercase, alphanumeric, hyphens)
-    safe_index_name = index_name.lower().replace('/', '-').replace('_', '-').replace('@', '-')
-    safe_index_name = ''.join(c for c in safe_index_name if c.isalnum() or c == '-')
+    # Use shared index names instead of per-repo indexes
+    # This avoids hitting the 5-index limit on free tier
+    # We'll use namespaces to partition data by repository
+    shared_index_name = f"github-repos-{index_type}"
     
     # Check if index exists
     existing_indexes = pc.list_indexes()
     index_names = [idx['name'] for idx in existing_indexes]
     
-    if safe_index_name not in index_names:
-        # Create new index with serverless spec
-        pc.create_index(
-            name=safe_index_name,
-            dimension=EMBEDDING_DIMENSION,
-            metric='cosine',
-            spec=ServerlessSpec(
-                cloud='aws',
-                region=PINECONE_ENVIRONMENT
+    if shared_index_name not in index_names:
+        # Create shared index with serverless spec
+        try:
+            pc.create_index(
+                name=shared_index_name,
+                dimension=EMBEDDING_DIMENSION,
+                metric='cosine',
+                spec=ServerlessSpec(
+                    cloud='aws',
+                    region=PINECONE_ENVIRONMENT
+                )
             )
-        )
-        # Wait for index to be ready
-        time.sleep(1)
+            # Wait for index to be ready
+            time.sleep(2)
+        except Exception as e:
+            # If index creation fails (e.g., limit reached), raise informative error
+            error_msg = str(e)
+            if "max serverless indexes" in error_msg.lower() or "forbidden" in error_msg.lower():
+                raise HTTPException(
+                    status_code=403,
+                    detail="Pinecone index limit reached. Please delete unused indexes in your Pinecone dashboard or upgrade your plan."
+                )
+            raise
     
-    return pc.Index(safe_index_name), safe_index_name
+    return pc.Index(shared_index_name), shared_index_name
 
 
 def get_repo_id(owner: str, repo: str, branch: Optional[str]) -> str:
@@ -283,14 +297,26 @@ def check_if_indexed(owner: str, repo: str, branch: Optional[str] = None) -> boo
     try:
         branch = branch or get_default_branch(owner, repo)
         repo_id = get_repo_id(owner, repo, branch)
-        index, _ = get_or_create_index(f"files-{repo_id}")
+        index, _ = get_or_create_index("files")
         
-        # Query to check if any vectors exist
-        results = index.query(
-            vector=[0.0] * EMBEDDING_DIMENSION,
-            top_k=1,
-            include_metadata=True
-        )
+        # Query to check if any vectors exist in the namespace
+        namespace = f"files-{repo_id.replace('/', '-').replace('@', '-')}"
+        try:
+            results = index.query(
+                vector=[0.0] * EMBEDDING_DIMENSION,
+                top_k=1,
+                include_metadata=True,
+                namespace=namespace,
+                filter={'repo_id': {'$eq': repo_id}}
+            )
+        except Exception:
+            # Fallback: try without namespace
+            results = index.query(
+                vector=[0.0] * EMBEDDING_DIMENSION,
+                top_k=1,
+                include_metadata=True,
+                filter={'repo_id': {'$eq': repo_id}}
+            )
         return len(results.get('matches', [])) > 0
     except Exception:
         return False
@@ -302,9 +328,9 @@ def build_embeddings(req: BuildEmbeddingsRequest):
     branch = req.branch or get_default_branch(req.owner, req.repo)
     repo_id = get_repo_id(req.owner, req.repo, branch)
     
-    # Create separate indexes for files and chunks
-    files_index, files_index_name = get_or_create_index(f"files-{repo_id}")
-    chunks_index, chunks_index_name = get_or_create_index(f"chunks-{repo_id}")
+    # Get shared indexes for files and chunks (uses namespaces for partitioning)
+    files_index, files_index_name = get_or_create_index("files")
+    chunks_index, chunks_index_name = get_or_create_index("chunks")
     
     model = get_embedding_model()
     files = list_repo_files(req.owner, req.repo, branch)
@@ -336,12 +362,13 @@ def build_embeddings(req: BuildEmbeddingsRequest):
         })
         num_files += 1
     
-    # Upsert files in batches
+    # Upsert files in batches using namespace
     if file_vectors:
         batch_size = 100
+        namespace = f"files-{repo_id.replace('/', '-').replace('@', '-')}"
         for i in range(0, len(file_vectors), batch_size):
             batch = file_vectors[i:i + batch_size]
-            files_index.upsert(vectors=batch)
+            files_index.upsert(vectors=batch, namespace=namespace)
     
     # Process chunks
     chunk_vectors = []
@@ -372,14 +399,16 @@ def build_embeddings(req: BuildEmbeddingsRequest):
             })
             num_chunks += 1
             
-            # Batch upsert every 200 chunks
+            # Batch upsert every 200 chunks using namespace
             if len(chunk_vectors) >= 200:
-                chunks_index.upsert(vectors=chunk_vectors)
+                namespace = f"chunks-{repo_id.replace('/', '-').replace('@', '-')}"
+                chunks_index.upsert(vectors=chunk_vectors, namespace=namespace)
                 chunk_vectors = []
     
     # Upsert remaining chunks
     if chunk_vectors:
-        chunks_index.upsert(vectors=chunk_vectors)
+        namespace = f"chunks-{repo_id.replace('/', '-').replace('@', '-')}"
+        chunks_index.upsert(vectors=chunk_vectors, namespace=namespace)
     
     took = time.time() - start_time
     return BuildEmbeddingsResponse(
@@ -413,30 +442,57 @@ class QueryResponse(BaseModel):
 
 
 def _query_pinecone_files(repo_id: str, query_emb: np.ndarray, top_files: int):
-    index, _ = get_or_create_index(f"files-{repo_id}")
-    results = index.query(
-        vector=query_emb.tolist(),
-        top_k=top_files,
-        include_metadata=True,
-        filter={'repo_id': {'$eq': repo_id}}
-    )
+    index, _ = get_or_create_index("files")
+    # Use namespace based on repo_id to partition data in the shared index
+    namespace = f"files-{repo_id.replace('/', '-').replace('@', '-')}"
+    try:
+        results = index.query(
+            vector=query_emb.tolist(),
+            top_k=top_files,
+            include_metadata=True,
+            namespace=namespace,
+            filter={'repo_id': {'$eq': repo_id}}
+        )
+    except Exception:
+        # Fallback: try without namespace if namespace doesn't exist yet
+        results = index.query(
+            vector=query_emb.tolist(),
+            top_k=top_files,
+            include_metadata=True,
+            filter={'repo_id': {'$eq': repo_id}}
+        )
     return results
 
 
 def _query_pinecone_chunks(repo_id: str, query_emb: np.ndarray, file_paths: List[str], per_file: int) -> List[Dict[str, Any]]:
-    index, _ = get_or_create_index(f"chunks-{repo_id}")
+    index, _ = get_or_create_index("chunks")
+    # Use namespace based on repo_id to partition data in the shared index
+    namespace = f"chunks-{repo_id.replace('/', '-').replace('@', '-')}"
     results_list: List[Dict[str, Any]] = []
     
     for path in file_paths:
-        results = index.query(
-            vector=query_emb.tolist(),
-            top_k=per_file,
-            include_metadata=True,
-            filter={
-                'repo_id': {'$eq': repo_id},
-                'file_path': {'$eq': path}
-            }
-        )
+        try:
+            results = index.query(
+                vector=query_emb.tolist(),
+                top_k=per_file,
+                include_metadata=True,
+                namespace=namespace,
+                filter={
+                    'repo_id': {'$eq': repo_id},
+                    'file_path': {'$eq': path}
+                }
+            )
+        except Exception:
+            # Fallback: try without namespace if namespace doesn't exist yet
+            results = index.query(
+                vector=query_emb.tolist(),
+                top_k=per_file,
+                include_metadata=True,
+                filter={
+                    'repo_id': {'$eq': repo_id},
+                    'file_path': {'$eq': path}
+                }
+            )
         
         for match in results.get('matches', []):
             results_list.append({

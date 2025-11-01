@@ -9,25 +9,30 @@ import requests
 import numpy as np
 
 try:
-    import chromadb
-    from chromadb.config import Settings as ChromaSettings
-except Exception:  # pragma: no cover
-    chromadb = None
-    ChromaSettings = None
+    from pinecone import Pinecone, ServerlessSpec
+except Exception:
+    Pinecone = None
+    ServerlessSpec = None
 
 try:
     from sentence_transformers import SentenceTransformer
-except Exception:  # pragma: no cover
+except Exception:
     SentenceTransformer = None
 
 # Load environment variables
 from dotenv import load_dotenv
 load_dotenv()
 
-# Get API key from environment
+# Get API keys from environment
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+PINECONE_API_KEY = os.environ.get("PINECONE_API_KEY")
+PINECONE_ENVIRONMENT = os.environ.get("PINECONE_ENVIRONMENT", "us-east-1")
+PINECONE_INDEX_NAME = os.environ.get("PINECONE_INDEX_NAME", "github-rag-index")
+
 if not GROQ_API_KEY:
     print("Warning: GROQ_API_KEY not found in environment variables")
+if not PINECONE_API_KEY:
+    print("Warning: PINECONE_API_KEY not found in environment variables")
 
 app = FastAPI()
 
@@ -47,18 +52,12 @@ class RepoInfo(BaseModel):
 
 # Configuration
 EMBEDDING_MODEL_NAME = os.environ.get("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
-CHROMA_PERSIST_PATH = os.environ.get(
-    "CHROMA_PERSIST_PATH",
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".rag_store"))
-)
+EMBEDDING_DIMENSION = 384  # Dimension for all-MiniLM-L6-v2
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 
 _embedding_model: Optional[SentenceTransformer] = None
-_chroma_client = None
-
-
-def _ensure_dirs():
-    os.makedirs(CHROMA_PERSIST_PATH, exist_ok=True)
+_pinecone_client = None
+_pinecone_index = None
 
 
 def get_embedding_model() -> SentenceTransformer:
@@ -70,14 +69,51 @@ def get_embedding_model() -> SentenceTransformer:
     return _embedding_model
 
 
-def get_chroma_client():
-    global _chroma_client
-    if _chroma_client is None:
-        if chromadb is None:
-            raise HTTPException(status_code=500, detail="chromadb not installed")
-        _ensure_dirs()
-        _chroma_client = chromadb.PersistentClient(path=CHROMA_PERSIST_PATH)
-    return _chroma_client
+def get_pinecone_client():
+    global _pinecone_client
+    if _pinecone_client is None:
+        if Pinecone is None:
+            raise HTTPException(status_code=500, detail="pinecone-client not installed")
+        if not PINECONE_API_KEY:
+            raise HTTPException(status_code=500, detail="PINECONE_API_KEY not configured")
+        _pinecone_client = Pinecone(api_key=PINECONE_API_KEY)
+    return _pinecone_client
+
+
+def get_pinecone_index():
+    """Get or create the single Pinecone index"""
+    global _pinecone_index
+    if _pinecone_index is None:
+        pc = get_pinecone_client()
+        
+        # Check if index exists
+        existing_indexes = pc.list_indexes()
+        index_names = [idx['name'] for idx in existing_indexes]
+        
+        if PINECONE_INDEX_NAME not in index_names:
+            # Create new index with serverless spec
+            pc.create_index(
+                name=PINECONE_INDEX_NAME,
+                dimension=EMBEDDING_DIMENSION,
+                metric='cosine',
+                spec=ServerlessSpec(
+                    cloud='aws',
+                    region=PINECONE_ENVIRONMENT
+                )
+            )
+            # Wait for index to be ready
+            print(f"Creating index {PINECONE_INDEX_NAME}...")
+            time.sleep(5)
+        
+        _pinecone_index = pc.Index(PINECONE_INDEX_NAME)
+    
+    return _pinecone_index
+
+
+def get_namespace(owner: str, repo: str, branch: str, data_type: str) -> str:
+    """Generate namespace for organizing data within single index"""
+    # Format: owner-repo-branch-type (e.g., "facebook-react-main-files")
+    return f"{owner}-{repo}-{branch}-{data_type}".lower().replace('/', '-').replace('@', '-')
 
 
 def get_repo_id(owner: str, repo: str, branch: Optional[str]) -> str:
@@ -105,7 +141,6 @@ def list_repo_files(owner: str, repo: str, branch: str) -> List[str]:
     url = f"https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1"
     r = requests.get(url, headers=headers, timeout=20)
     if not r.ok:
-        # Fallback to master
         branch_fallback = "master" if branch != "master" else branch
         r = requests.get(
             f"https://api.github.com/repos/{owner}/{repo}/git/trees/{branch_fallback}?recursive=1",
@@ -126,7 +161,6 @@ def list_repo_files(owner: str, repo: str, branch: str) -> List[str]:
 
 
 def is_supported_text_file(path: str) -> bool:
-    # Filter obvious binaries and large artifacts by extension
     binary_exts = {
         ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico",
         ".pdf", ".zip", ".gz", ".tar", ".rar", ".7z",
@@ -136,7 +170,6 @@ def is_supported_text_file(path: str) -> bool:
     _, ext = os.path.splitext(path.lower())
     if ext in binary_exts:
         return False
-    # Common code/text files
     allow_exts = {
         ".py", ".js", ".ts", ".tsx", ".jsx", ".java", ".go", ".rb", ".rs",
         ".cpp", ".cc", ".c", ".h", ".hpp", ".cs", ".php", ".swift",
@@ -144,7 +177,6 @@ def is_supported_text_file(path: str) -> bool:
         ".html", ".css", ".scss", ".less", ".json", ".yml", ".yaml", ".toml",
         ".md", ".txt", ".env", ".ini", ".cfg", ".conf", ".sql"
     }
-    # Allow dotfiles like .gitignore, .dockerignore explicitly
     if os.path.basename(path).lower() in {"license", "readme", "readme.md", ".gitignore", ".dockerignore"}:
         return True
     return ext in allow_exts
@@ -155,11 +187,9 @@ def fetch_file_content(owner: str, repo: str, branch: str, path: str) -> Optiona
     try:
         r = requests.get(raw_url, timeout=20)
         if r.ok:
-            # Skip very large files (> 500 KB)
             if len(r.content) > 500 * 1024:
                 return None
             text = r.text
-            # Rough filter to avoid binary by presence of NUL byte
             if "\x00" in text:
                 return None
             return text
@@ -169,7 +199,6 @@ def fetch_file_content(owner: str, repo: str, branch: str, path: str) -> Optiona
 
 
 def chunk_code(content: str, min_chars: int = 900, max_chars: int = 1800, overlap_lines: int = 15) -> List[Tuple[str, int, int]]:
-    # Chunk by lines while aiming for ~300-500 tokens (~1200-2000 chars)
     lines = content.splitlines()
     chunks: List[Tuple[str, int, int]] = []
     start = 0
@@ -180,15 +209,12 @@ def chunk_code(content: str, min_chars: int = 900, max_chars: int = 1800, overla
         while end < n and current_chars < max_chars:
             current_chars += len(lines[end]) + 1
             if current_chars >= min_chars and (end - start) >= 20:
-                # allow early stop after reaching min_chars
                 pass
             end += 1
-        # Ensure at least one line
         if end <= start:
             end = start + 1
         chunk_text = "\n".join(lines[start:end])
-        chunks.append((chunk_text, start + 1, end))  # 1-based lines
-        # Overlap
+        chunks.append((chunk_text, start + 1, end))
         start = end - overlap_lines
         if start < 0:
             start = 0
@@ -203,25 +229,6 @@ def sha1_id(repo_id: str, path: str, start_line: Optional[int] = None, end_line:
     base = f"{repo_id}:{path}:{start_line or ''}:{end_line or ''}"
     return hashlib.sha1(base.encode("utf-8")).hexdigest()
 
-import re
-
-def sanitize_name(name: str) -> str:
-    return re.sub(r'[^a-zA-Z0-9._-]', '-', name)
-
-def get_or_create_collections(repo_id: str):
-    client = get_chroma_client()
-    safe_repo_id = sanitize_name(repo_id)
-    files_name = f"files--{safe_repo_id}"
-    chunks_name = f"chunks--{safe_repo_id}"
-    files_coll = client.get_or_create_collection(
-        name=files_name,
-        metadata={"repo_id": repo_id, "type": "files"}
-    )
-    chunks_coll = client.get_or_create_collection(
-        name=chunks_name,
-        metadata={"repo_id": repo_id, "type": "chunks"}
-    )
-    return files_coll, chunks_coll
 
 class BuildEmbeddingsRequest(BaseModel):
     owner: str
@@ -241,12 +248,19 @@ def check_if_indexed(owner: str, repo: str, branch: Optional[str] = None) -> boo
     """Check if repository has already been indexed"""
     try:
         branch = branch or get_default_branch(owner, repo)
-        repo_id = get_repo_id(owner, repo, branch)
-        files_coll, _ = get_or_create_collections(repo_id)
-        # Check if collection has any documents
-        result = files_coll.get(limit=1)
-        return len(result.get("ids", [])) > 0
-    except Exception:
+        index = get_pinecone_index()
+        files_namespace = get_namespace(owner, repo, branch, "files")
+        
+        # Query to check if any vectors exist in this namespace
+        results = index.query(
+            namespace=files_namespace,
+            vector=[0.0] * EMBEDDING_DIMENSION,
+            top_k=1,
+            include_metadata=True
+        )
+        return len(results.get('matches', [])) > 0
+    except Exception as e:
+        print(f"Error checking if indexed: {e}")
         return False
 
 
@@ -255,72 +269,87 @@ def build_embeddings(req: BuildEmbeddingsRequest):
     start_time = time.time()
     branch = req.branch or get_default_branch(req.owner, req.repo)
     repo_id = get_repo_id(req.owner, req.repo, branch)
-    files_coll, chunks_coll = get_or_create_collections(repo_id)
+    
+    # Get single index and define namespaces
+    index = get_pinecone_index()
+    files_namespace = get_namespace(req.owner, req.repo, branch, "files")
+    chunks_namespace = get_namespace(req.owner, req.repo, branch, "chunks")
+    
     model = get_embedding_model()
     files = list_repo_files(req.owner, req.repo, branch)
     num_files = 0
     num_chunks = 0
-    file_texts: List[str] = []
-    file_ids: List[str] = []
-    file_metas: List[Dict[str, Any]] = []
+    
+    # Process files
+    file_vectors = []
     for path in files:
         content = fetch_file_content(req.owner, req.repo, branch, path)
         if not content:
             continue
-        # Truncate file-level representation to 10k chars for embedding stability
+        
         file_text = content[:10000]
         file_id = sha1_id(repo_id, path)
-        file_meta = {
-            "repo_id": repo_id,
-            "owner": req.owner,
-            "repo": req.repo,
-            "branch": branch,
-            "file_path": path,
-        }
-        file_texts.append(file_text)
-        file_ids.append(file_id)
-        file_metas.append(file_meta)
+        file_emb = model.encode([file_text], convert_to_numpy=True)[0]
+        
+        file_vectors.append({
+            'id': file_id,
+            'values': file_emb.tolist(),
+            'metadata': {
+                'repo_id': repo_id,
+                'owner': req.owner,
+                'repo': req.repo,
+                'branch': branch,
+                'file_path': path,
+                'type': 'file'
+            }
+        })
         num_files += 1
-
-    if file_texts:
-        file_embs = model.encode(file_texts, convert_to_numpy=True, show_progress_bar=False)
-        files_coll.upsert(documents=file_texts, metadatas=file_metas, ids=file_ids, embeddings=file_embs.tolist())
-
-    # Build chunk-level embeddings
-    chunk_docs: List[str] = []
-    chunk_metas: List[Dict[str, Any]] = []
-    chunk_ids: List[str] = []
-    for idx, path in enumerate(files):
+    
+    # Upsert files in batches to the files namespace
+    if file_vectors:
+        batch_size = 100
+        for i in range(0, len(file_vectors), batch_size):
+            batch = file_vectors[i:i + batch_size]
+            index.upsert(vectors=batch, namespace=files_namespace)
+    
+    # Process chunks
+    chunk_vectors = []
+    for path in files:
         content = fetch_file_content(req.owner, req.repo, branch, path)
         if not content:
             continue
+        
         chunks = chunk_code(content)
         for chunk_text, start_line, end_line in chunks:
-            cid = sha1_id(repo_id, path, start_line, end_line)
-            meta = {
-                "repo_id": repo_id,
-                "owner": req.owner,
-                "repo": req.repo,
-                "branch": branch,
-                "file_path": path,
-                "start_line": start_line,
-                "end_line": end_line,
-            }
-            chunk_docs.append(chunk_text)
-            chunk_metas.append(meta)
-            chunk_ids.append(cid)
+            chunk_id = sha1_id(repo_id, path, start_line, end_line)
+            chunk_emb = model.encode([chunk_text], convert_to_numpy=True)[0]
+            
+            chunk_vectors.append({
+                'id': chunk_id,
+                'values': chunk_emb.tolist(),
+                'metadata': {
+                    'repo_id': repo_id,
+                    'owner': req.owner,
+                    'repo': req.repo,
+                    'branch': branch,
+                    'file_path': path,
+                    'start_line': start_line,
+                    'end_line': end_line,
+                    'text': chunk_text[:1000],  # Store truncated text for retrieval
+                    'type': 'chunk'
+                }
+            })
             num_chunks += 1
-
-        # Periodically flush to Chroma to avoid huge payloads
-        if len(chunk_docs) >= 200:
-            chunk_embs = model.encode(chunk_docs, convert_to_numpy=True, show_progress_bar=False)
-            chunks_coll.upsert(documents=chunk_docs, metadatas=chunk_metas, ids=chunk_ids, embeddings=chunk_embs.tolist())
-            chunk_docs, chunk_metas, chunk_ids = [], [], []
-
-    if chunk_docs:
-        chunk_embs = model.encode(chunk_docs, convert_to_numpy=True, show_progress_bar=False)
-        chunks_coll.upsert(documents=chunk_docs, metadatas=chunk_metas, ids=chunk_ids, embeddings=chunk_embs.tolist())
-
+            
+            # Batch upsert every 200 chunks to the chunks namespace
+            if len(chunk_vectors) >= 200:
+                index.upsert(vectors=chunk_vectors, namespace=chunks_namespace)
+                chunk_vectors = []
+    
+    # Upsert remaining chunks
+    if chunk_vectors:
+        index.upsert(vectors=chunk_vectors, namespace=chunks_namespace)
+    
     took = time.time() - start_time
     return BuildEmbeddingsResponse(
         repo_id=repo_id,
@@ -352,33 +381,43 @@ class QueryResponse(BaseModel):
     references: List[Reference]
 
 
-def _query_chroma_files(repo_id: str, query_emb: np.ndarray, top_files: int):
-    files_coll, _ = get_or_create_collections(repo_id)
-    res = files_coll.query(query_embeddings=[query_emb.tolist()], n_results=top_files, where={"repo_id": repo_id})
-    return res
-
-
-def _query_chroma_chunks(repo_id: str, query_emb: np.ndarray, file_paths: List[str], per_file: int) -> List[Dict[str, Any]]:
-    _, chunks_coll = get_or_create_collections(repo_id)
-    results: List[Dict[str, Any]] = []
-    for path in file_paths:
-        where_filter = {
-            "$and": [
-                {"repo_id": {"$eq": repo_id}},
-                {"file_path": {"$eq": path}}
-            ]
-        }
-        res = chunks_coll.query(query_embeddings=[query_emb.tolist()], n_results=per_file, where=where_filter)
-        for i in range(len(res.get("ids", [[]])[0])):
-            results.append({
-                "id": res["ids"][0][i],
-                "doc": res["documents"][0][i],
-                "meta": res["metadatas"][0][i],
-                "dist": res["distances"][0][i] if "distances" in res else None,
-            })
-    # Sort by distance if available
-    results.sort(key=lambda x: x.get("dist", 0.0))
+def _query_pinecone_files(owner: str, repo: str, branch: str, query_emb: np.ndarray, top_files: int):
+    index = get_pinecone_index()
+    files_namespace = get_namespace(owner, repo, branch, "files")
+    
+    results = index.query(
+        namespace=files_namespace,
+        vector=query_emb.tolist(),
+        top_k=top_files,
+        include_metadata=True
+    )
     return results
+
+
+def _query_pinecone_chunks(owner: str, repo: str, branch: str, query_emb: np.ndarray, file_paths: List[str], per_file: int) -> List[Dict[str, Any]]:
+    index = get_pinecone_index()
+    chunks_namespace = get_namespace(owner, repo, branch, "chunks")
+    results_list: List[Dict[str, Any]] = []
+    
+    for path in file_paths:
+        results = index.query(
+            namespace=chunks_namespace,
+            vector=query_emb.tolist(),
+            top_k=per_file,
+            include_metadata=True,
+            filter={'file_path': {'$eq': path}}
+        )
+        
+        for match in results.get('matches', []):
+            results_list.append({
+                'id': match['id'],
+                'doc': match['metadata'].get('text', ''),
+                'meta': match['metadata'],
+                'dist': 1 - match['score']  # Convert similarity to distance
+            })
+    
+    results_list.sort(key=lambda x: x.get('dist', 0.0))
+    return results_list
 
 
 def _build_citation_url(owner: str, repo: str, branch: str, path: str, start_line: int, end_line: int) -> str:
@@ -395,12 +434,10 @@ def _format_context(chunks: List[Dict[str, Any]]) -> str:
 
 
 def _call_llm(question: str, context: str) -> str:
-    # Prefer Groq if available as in existing codebase
     try:
         from groq import Groq
         api_key = os.environ.get("GROQ_API_KEY") or os.environ.get("API_KEY")
         if not api_key:
-            # Fallback: return extracted context snippet if no LLM key
             return (
                 "No LLM API key configured. Based on retrieved context, here are relevant snippets:\n\n"
                 + context
@@ -427,8 +464,7 @@ def _call_llm(question: str, context: str) -> str:
             stream=False,
         )
         return completion.choices[0].message.content
-    except Exception as e:  # pragma: no cover
-        # Fail open with raw context
+    except Exception as e:
         return (
             "LLM call failed. Returning relevant context instead.\n\n"
             + context
@@ -439,40 +475,29 @@ def _call_llm(question: str, context: str) -> str:
 @app.post("/query", response_model=QueryResponse)
 def query_repo(req: QueryRequest):
     branch = req.branch or get_default_branch(req.owner, req.repo)
-    repo_id = get_repo_id(req.owner, req.repo, branch)
-
-    # Ensure collections exist (and implicitly that embeddings have been built)
-    files_coll, chunks_coll = get_or_create_collections(repo_id)
-    # Quick existence check
-    try:
-        count_files = len(files_coll.get(ids=[]).get("ids", []))  # noop call returns empty
-    except Exception:
-        pass
-
-    # Embed query
+    
     model = get_embedding_model()
     query_emb = model.encode([req.question], convert_to_numpy=True, show_progress_bar=False)[0]
-
+    
     # Stage 1: retrieve relevant files
-    file_res = _query_chroma_files(repo_id, query_emb, req.top_files)
+    file_res = _query_pinecone_files(req.owner, req.repo, branch, query_emb, req.top_files)
     file_paths: List[str] = []
-    if file_res and file_res.get("metadatas"):
-        for meta in file_res["metadatas"][0]:
-            if meta and meta.get("file_path"):
-                file_paths.append(meta["file_path"])
-
+    if file_res and file_res.get('matches'):
+        for match in file_res['matches']:
+            if match.get('metadata') and match['metadata'].get('file_path'):
+                file_paths.append(match['metadata']['file_path'])
+    
     # Stage 2: retrieve relevant chunks within those files
     per_file = max(1, req.top_chunks // max(1, len(file_paths) or 1))
-    chunk_hits = _query_chroma_chunks(repo_id, query_emb, file_paths, per_file)
-    top_chunks = chunk_hits[: req.top_chunks]
-
+    chunk_hits = _query_pinecone_chunks(req.owner, req.repo, branch, query_emb, file_paths, per_file)
+    top_chunks = chunk_hits[:req.top_chunks]
+    
     if not top_chunks:
         return QueryResponse(answer="No relevant code found for your question.", references=[])
-
-    # Compose context
+    
     context_text = _format_context(top_chunks)
     answer_text = _call_llm(req.question, context_text)
-
+    
     # Build references
     refs: List[Reference] = []
     used = set()
@@ -490,28 +515,25 @@ def query_repo(req: QueryRequest):
                 url=_build_citation_url(m["owner"], m["repo"], m["branch"], m["file_path"], int(m["start_line"]), int(m["end_line"]))
             )
         )
-
+    
     return QueryResponse(answer=answer_text, references=refs)
 
 
 def _query_for_summary(owner: str, repo: str, branch: str, question: str, top_chunks: int = 20) -> str:
     """Internal function to query RAG system for summary generation"""
-    repo_id = get_repo_id(owner, repo, branch)
-    
     try:
         model = get_embedding_model()
         query_emb = model.encode([question], convert_to_numpy=True, show_progress_bar=False)[0]
         
-        # Retrieve relevant files and chunks
-        file_res = _query_chroma_files(repo_id, query_emb, top_files=10)
+        file_res = _query_pinecone_files(owner, repo, branch, query_emb, top_files=10)
         file_paths: List[str] = []
-        if file_res and file_res.get("metadatas"):
-            for meta in file_res["metadatas"][0]:
-                if meta and meta.get("file_path"):
-                    file_paths.append(meta["file_path"])
+        if file_res and file_res.get('matches'):
+            for match in file_res['matches']:
+                if match.get('metadata') and match['metadata'].get('file_path'):
+                    file_paths.append(match['metadata']['file_path'])
         
         per_file = max(1, top_chunks // max(1, len(file_paths) or 1))
-        chunk_hits = _query_chroma_chunks(repo_id, query_emb, file_paths, per_file)
+        chunk_hits = _query_pinecone_chunks(owner, repo, branch, query_emb, file_paths, per_file)
         top_chunks_data = chunk_hits[:top_chunks]
         
         if top_chunks_data:
@@ -524,14 +546,10 @@ def _query_for_summary(owner: str, repo: str, branch: str, question: str, top_ch
 
 @app.post("/summarize")
 def summarize_repo(info: RepoInfo):
-    """
-    Enhanced summarization using RAG system to analyze actual code
-    """
-    # Step 1: Check if repo is already indexed
+    """Enhanced summarization using RAG system to analyze actual code"""
     branch = get_default_branch(info.owner, info.repo)
     is_indexed = check_if_indexed(info.owner, info.repo, branch)
     
-    # Step 2: Build embeddings if not indexed
     if not is_indexed:
         try:
             build_req = BuildEmbeddingsRequest(
@@ -542,13 +560,10 @@ def summarize_repo(info: RepoInfo):
             build_result = build_embeddings(build_req)
             print(f"Indexed {build_result.num_files_indexed} files in {build_result.took_seconds}s")
         except Exception as e:
-            # Fallback to README-only if indexing fails
             print(f"Warning: Failed to index repository: {e}")
             return _fallback_readme_summary(info)
     
-    # Step 3: Query RAG system for different aspects
     try:
-        # Get README for basic info
         readme = ""
         try:
             r = requests.get(
@@ -561,21 +576,18 @@ def summarize_repo(info: RepoInfo):
         except Exception:
             pass
         
-        # Query for architecture and main features
         architecture_context = _query_for_summary(
             info.owner, info.repo, branch,
             "What is the main architecture, frameworks, and key technical components of this project?",
             top_chunks=15
         )
         
-        # Query for entry points and structure
         structure_context = _query_for_summary(
             info.owner, info.repo, branch,
             "What are the main entry points, file structure, and how is the project organized?",
             top_chunks=10
         )
         
-        # Generate enhanced summary using Groq
         from groq import Groq
         api_key = os.environ.get("GROQ_API_KEY") or os.environ.get("API_KEY")
         if not api_key:
@@ -583,7 +595,6 @@ def summarize_repo(info: RepoInfo):
         
         client = Groq(api_key=api_key)
         
-        # Generate concise summary
         summary_prompt = f"""Based on the actual code analysis of the GitHub repository {info.owner}/{info.repo}, create a concise 2-3 paragraph summary.
 
 Repository Description: {info.description}
@@ -613,7 +624,6 @@ Instructions:
         )
         summary = summary_completion.choices[0].message.content
         
-        # Generate detailed project paper
         paper_prompt = f"""Based on the actual code analysis of {info.owner}/{info.repo}, create a comprehensive one-page project overview.
 
 Repository Description: {info.description}

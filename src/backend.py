@@ -36,14 +36,33 @@ if not PINECONE_API_KEY:
 
 app = FastAPI()
 
-# Allow CORS for extension
+# Allow CORS for extension with proper configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Allow all origins including chrome extensions
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Allow all HTTP methods
+    allow_headers=["*"],  # Allow all headers
+    expose_headers=["*"],  # Expose all headers
+    max_age=3600,  # Cache preflight requests for 1 hour
 )
+
+# Handle OPTIONS requests explicitly
+@app.options("/{path:path}")
+async def options_handler(path: str):
+    """Handle CORS preflight requests"""
+    return {"message": "OK"}
+
+# Add CORS headers middleware
+@app.middleware("http")
+async def add_cors_headers(request, call_next):
+    """Add CORS headers to all responses"""
+    response = await call_next(request)
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Allow-Methods"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    return response
 
 class RepoInfo(BaseModel):
     repo: str

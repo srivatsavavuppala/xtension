@@ -765,7 +765,7 @@ hideInteractiveButtons();
 // THEME TOGGLE UI - Original positioning with improved animations
 const themeToggle = document.createElement('button');
 themeToggle.id = 'theme-toggle';
-themeToggle.innerHTML = '🌙'; // Default to moon icon for light mode
+themeToggle.innerHTML = '??'; // Default to moon icon for light mode
 themeToggle.setAttribute('aria-label', 'Toggle dark/light mode');
 themeToggle.style.cssText = [
   'position: absolute',
@@ -795,7 +795,7 @@ function setTheme(isDark) {
     // Animate sun icon appearance
     themeToggle.style.transform = 'scale(0.8) rotate(180deg)';
     setTimeout(() => {
-      themeToggle.innerHTML = '☀️';
+      themeToggle.innerHTML = '??';
       themeToggle.style.transform = 'scale(1) rotate(0deg)';
     }, 150);
     themeToggle.style.background = 'transparent';
@@ -806,7 +806,7 @@ function setTheme(isDark) {
     // Animate moon icon appearance
     themeToggle.style.transform = 'scale(0.8) rotate(-180deg)';
     setTimeout(() => {
-      themeToggle.innerHTML = '🌙';
+      themeToggle.innerHTML = '??';
       themeToggle.style.transform = 'scale(1) rotate(0deg)';
     }, 150);
     themeToggle.style.background = 'transparent';
@@ -954,9 +954,15 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
   const DEFAULT_RAG_API_BASE = 'https://xtension.onrender.com';
   let RAG_API_BASE = DEFAULT_RAG_API_BASE;
   chrome.storage.local.get({ ragApiBase: null }, (cfg) => {
-    if (cfg && cfg.ragApiBase) {
-      RAG_API_BASE = cfg.ragApiBase;
+    const savedBase = cfg && cfg.ragApiBase ? cfg.ragApiBase : null;
+    if (!savedBase) return;
+
+    if (savedBase.includes('railway.app')) {
+      chrome.storage.local.set({ ragApiBase: DEFAULT_RAG_API_BASE });
+      return;
     }
+
+    RAG_API_BASE = savedBase;
   });
   if (historyIcon) {
   const updateHistoryIconTheme = () => {
@@ -1039,7 +1045,7 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
         try {
           if (askBtn) askBtn.disabled = true;
           if (askResult) {
-            askResult.innerHTML = '<div style="font-size: 13px; color: var(--empty-desc);">Indexing repo for semantic search…</div>';
+            askResult.innerHTML = '<div style="font-size: 13px; color: var(--empty-desc);">Indexing repo for semantic search?</div>';
           }
           const res = await fetch(`${RAG_API_BASE}/build_embeddings`, {
             method: 'POST',
@@ -1108,8 +1114,8 @@ function renderQueryResult(result) {
     
     <div id="citation-preview" style="display: none; background: var(--modal-bg); border: 1px solid var(--modal-border); border-radius: 8px; padding: 16px; margin-bottom: 12px;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-        <span style="font-weight: 600; color: var(--modal-title); font-size: 13px;">📄 Code Reference</span>
-        <button id="close-preview" style="background: none; border: none; color: var(--modal-close); cursor: pointer; font-size: 18px;">×</button>
+        <span style="font-weight: 600; color: var(--modal-title); font-size: 13px;">?? Code Reference</span>
+        <button id="close-preview" style="background: none; border: none; color: var(--modal-close); cursor: pointer; font-size: 18px;">?</button>
       </div>
       <div id="preview-content" style="font-family: 'Courier New', monospace; font-size: 12px; background: var(--summary-bg); padding: 12px; border-radius: 6px; overflow-x: auto; max-height: 200px; overflow-y: auto;">
       </div>
@@ -1408,8 +1414,8 @@ document.head.appendChild(enhancedCitationStyles);
           const question = (askInput && askInput.value ? askInput.value.trim() : '');
           if (!question) return;
           askBtn.disabled = true;
-          askBtn.textContent = 'Asking…';
-          askResult.innerHTML = '<div style="font-size: 13px; color: var(--empty-desc);">Retrieving relevant code…</div>';
+          askBtn.textContent = 'Asking?';
+          askResult.innerHTML = '<div style="font-size: 13px; color: var(--empty-desc);">Retrieving relevant code?</div>';
           const result = await queryRepo(owner, repo, question);
           renderQueryResult(result);
         } catch (e) {
@@ -1601,7 +1607,7 @@ document.head.appendChild(enhancedCitationStyles);
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       const originalText = downloadBtn.innerHTML;
-      downloadBtn.innerHTML = '✅ Downloaded!';
+      downloadBtn.innerHTML = '? Downloaded!';
       downloadBtn.style.background = 'linear-gradient(135deg, #48bb78 0%, #38a169 100%)';
       setTimeout(() => {
         downloadBtn.innerHTML = originalText;
@@ -1707,10 +1713,10 @@ document.head.appendChild(enhancedCitationStyles);
     const header = document.createElement('div');
 header.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 18px 24px 0 24px;';
 const title = document.createElement('div');
-title.textContent = 'Repo History ⏳';
+title.textContent = 'Repo History ?';
 title.style.cssText = 'font-size: 15px; font-weight: 600; color: var(--modal-title); max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;';
 const closeBtn = document.createElement('button');
-closeBtn.innerHTML = '✖';
+closeBtn.innerHTML = '?';
 closeBtn.setAttribute('aria-label', 'Close');
 closeBtn.style.cssText = 'width: 32px; height: 32px; min-width: 32px; min-height: 32px; max-width: 32px; max-height: 32px; display: flex; align-items: center; justify-content: center; background: none; border: none; font-size: 18px; color: var(--modal-close); cursor: pointer; border-radius: 6px; transition: background 0.2s; margin-left: 8px;';
 closeBtn.onmouseover = () => { closeBtn.style.background = 'var(--modal-hover)'; };
@@ -1721,9 +1727,9 @@ modal.appendChild(header);
     const tabContainer = document.createElement('div');
     tabContainer.style.cssText = 'display: flex; border-bottom: 1px solid #e2e8f0; margin: 18px 0 0 0; z-index: 10002;';
     const tabs = [
-      { id: 'analyzed', label: '📊 Analyzed' },
-      { id: 'visited', label: '🔗 Visited' },
-      { id: 'favorites', label: '❤️ Favorites' }
+      { id: 'analyzed', label: '?? Analyzed' },
+      { id: 'visited', label: '?? Visited' },
+      { id: 'favorites', label: '?? Favorites' }
     ];
     tabs.forEach(tab => {
       const tabBtn = document.createElement('button');
@@ -1848,7 +1854,7 @@ modal.appendChild(header);
       const oneDay = 24 * 60 * 60 * 1000;
       const history = result.analyzedHistory.filter(item => (now - item.timestamp) < oneDay);
       if (history.length === 0) {
-        container.innerHTML = createEmptyState('📊', 'No analyzed repositories', 'Analyze some repositories to see them here!');
+        container.innerHTML = createEmptyState('??', 'No analyzed repositories', 'Analyze some repositories to see them here!');
       } else {
         container.innerHTML = '';
         history.forEach((item, index) => {
@@ -1863,7 +1869,7 @@ modal.appendChild(header);
     chrome.storage.local.get({ visitedRepos: [] }, (result) => {
       const visited = result.visitedRepos;
       if (visited.length === 0) {
-        container.innerHTML = createEmptyState('🔗', 'No visited repositories', 'Browse GitHub repositories to see them here!');
+        container.innerHTML = createEmptyState('??', 'No visited repositories', 'Browse GitHub repositories to see them here!');
       } else {
         container.innerHTML = '';
         visited.forEach((item, index) => {
@@ -1878,7 +1884,7 @@ modal.appendChild(header);
     chrome.storage.local.get({ favoriteRepos: [] }, (result) => {
       const favorites = result.favoriteRepos || [];
       if (favorites.length === 0) {
-        container.innerHTML = createEmptyState('❤️', 'No favorite repositories', 'Star repositories to add them to favorites!');
+        container.innerHTML = createEmptyState('??', 'No favorite repositories', 'Star repositories to add them to favorites!');
       } else {
         container.innerHTML = '';
         favorites.forEach((item, index) => {
@@ -1956,7 +1962,7 @@ modal.appendChild(header);
 
   const btnRow = itemDiv.querySelector('.analyzed-btn-row');
   const downloadBtn = document.createElement('button');
-  downloadBtn.textContent = '📄 Download Report';
+  downloadBtn.textContent = '?? Download Report';
   downloadBtn.style.cssText = 'background: #10b981; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer;';
   downloadBtn.onclick = (e) => {
     e.stopPropagation();
@@ -1967,16 +1973,16 @@ modal.appendChild(header);
 const favBtn = document.createElement('button');
 favBtn.className = 'favorite-btn';
 favBtn.style.cssText = 'background: none; color: #f59e0b; border: none; padding: 6px 12px; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 4px;';
-favBtn.innerHTML = '<span class="fav-star" style="font-size: 15px;">☆</span> <span>Add to Favorites</span>';
+favBtn.innerHTML = '<span class="fav-star" style="font-size: 15px;">?</span> <span>Add to Favorites</span>';
 
 chrome.storage.local.get({ favoriteRepos: [] }, (result) => {
   const favs = result.favoriteRepos || [];
   const exists = favs.some(f => f.url === item.url);
   if (exists) {
-    favBtn.innerHTML = '<span class="fav-star" style="font-size: 15px; color: #f59e0b;">★</span> <span>Favorited</span>';
+    favBtn.innerHTML = '<span class="fav-star" style="font-size: 15px; color: #f59e0b;">?</span> <span>Favorited</span>';
     favBtn.style.background = 'rgba(245, 158, 11, 0.08)';
   } else {
-    favBtn.innerHTML = '<span class="fav-star" style="font-size: 15px;">☆</span> <span>Add to Favorites</span>';
+    favBtn.innerHTML = '<span class="fav-star" style="font-size: 15px;">?</span> <span>Add to Favorites</span>';
     favBtn.style.background = 'none';
   }
 });
@@ -1988,11 +1994,11 @@ favBtn.onclick = (e) => {
     const exists = favs.some(f => f.url === item.url);
     if (exists) {
       favs = favs.filter(f => f.url !== item.url);
-      favBtn.innerHTML = '<span class="fav-star" style="font-size: 15px;">☆</span> <span>Add to Favorites</span>';
+      favBtn.innerHTML = '<span class="fav-star" style="font-size: 15px;">?</span> <span>Add to Favorites</span>';
       favBtn.style.background = 'none';
     } else {
       favs.push({ url: item.url, owner: item.owner, repo: item.repo, timestamp: Date.now() });
-     favBtn.innerHTML = '<div style="display: flex; flex-direction: column; align-items: center; width: 100%;"><span class="fav-star" style="font-size: 15px; color: #f59e0b;">★</span><span style="display: block; text-align: center;">Favorited</span></div>';
+     favBtn.innerHTML = '<div style="display: flex; flex-direction: column; align-items: center; width: 100%;"><span class="fav-star" style="font-size: 15px; color: #f59e0b;">?</span><span style="display: block; text-align: center;">Favorited</span></div>';
       favBtn.style.background = 'rgba(245, 158, 11, 0.08)';
     }
     chrome.storage.local.set({ favoriteRepos: favs }, () => {
@@ -2039,7 +2045,7 @@ btnRow.appendChild(favBtn);
   <div style="display: flex; align-items: center; justify-content: space-between; overflow: hidden;">
     <div style="display: flex; align-items: center;">
       <div style="color: var(--tree-file-text); padding: 3px 6px; font-size: 11px; font-weight: 600; margin-right: 10px; white-space: nowrap; display: flex; align-items: center; gap: 4px;">
-        <span style="font-size: 14px;">🔗</span>${item.visitCount > 1 ? `${item.visitCount}x` : ''}
+        <span style="font-size: 14px;">??</span>${item.visitCount > 1 ? `${item.visitCount}x` : ''}
       </div>
       <a href="${item.url}" target="_blank" style="font-weight: 600; color: var(--modal-title); text-decoration: none; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
         ${item.repo}
@@ -2092,9 +2098,9 @@ function createFavoriteHistoryItem(item, index) {
         </div>
         <div style="display: flex; align-items: center; gap: 8px;">
           <span style="color: var(--empty-desc); font-size: 13px; background: var(--summary-bg); padding: 3px 7px; border-radius: 6px; white-space: nowrap; font-weight: bold;">
-            ★
+            ?
           </span>
-          <button class="remove-fav-btn" title="Remove from Favorites" style="background: none; color: #ef4444; border: none; padding: 0 4px; border-radius: 6px; font-size: 18px; cursor: pointer; line-height: 1;">🗑️</button>
+          <button class="remove-fav-btn" title="Remove from Favorites" style="background: none; color: #ef4444; border: none; padding: 0 4px; border-radius: 6px; font-size: 18px; cursor: pointer; line-height: 1;">???</button>
         </div>
       </div>
     </div>
@@ -2187,16 +2193,16 @@ function createFavoriteHistoryItem(item, index) {
     summaryDiv.classList.add(type);
     let icon = '';
     if (type === 'loading') {
-      icon = '⏳';
+      icon = '?';
     } else if (type === 'error') {
-      if (errorType === 'network-error') icon = '🌐';
-      else if (errorType === 'api-error') icon = '🤖';
-      else if (errorType === 'extraction-error') icon = '📦';
-      else icon = '⌘';
+      if (errorType === 'network-error') icon = '??';
+      else if (errorType === 'api-error') icon = '??';
+      else if (errorType === 'extraction-error') icon = '??';
+      else icon = '?';
     } else if (type === 'success') {
       icon = `<img src="../icons/branch.png" alt="View Structure" title="Get Repository Tree" style="width: 16px; height: 16px; cursor: pointer;" class="tree-trigger" onclick="showTreeOverlay()">`;
     } else if (type === 'info') {
-      icon = 'ℹ️';
+      icon = '??';
     }
     
     if (type === 'error') {
@@ -2234,7 +2240,7 @@ function createFavoriteHistoryItem(item, index) {
           <div class="tree-modal">
             <div class="tree-modal-header">
               <h2 class="tree-modal-title">Repository Structure</h2>
-              <button class="tree-modal-close" aria-label="Close">✕</button>
+              <button class="tree-modal-close" aria-label="Close">?</button>
             </div>
             <div class="tree-modal-content">
               ${buildTreeHtml(result.summaryResult.tree_data)}
@@ -2431,12 +2437,12 @@ function createFavoriteHistoryItem(item, index) {
     summaryDiv.className = 'error';
     summaryDiv.innerHTML = `
       <div class="error-content">
-        <div class="error-icon">🔗</div>
+        <div class="error-icon">??</div>
         <div class="error-text">
           <h3 class="error-title">GitHub Repository Required</h3>
           <p class="error-description">Please navigate to a GitHub repository page to use this extension.</p>
           <div class="error-actions">
-            <button class="error-action-btn">🌐 Go to GitHub</button>
+            <button class="error-action-btn">?? Go to GitHub</button>
           </div>
         </div>
       </div>
@@ -2458,7 +2464,7 @@ function createFavoriteHistoryItem(item, index) {
   function showGitHubHelp() {
     summaryDiv.innerHTML = `
       <div class="error-content">
-        <div class="error-icon">❓</div>
+        <div class="error-icon">?</div>
         <div class="error-text">
           <h3 class="error-title">How to use Repo Summarizer</h3>
           <p class="error-description">
@@ -2468,8 +2474,8 @@ function createFavoriteHistoryItem(item, index) {
             4. Download the detailed project report if needed
           </p>
           <div class="error-actions">
-            <button class="error-action-btn">🌐 Go to GitHub</button>
-            <button class="error-action-btn secondary">← Back</button>
+            <button class="error-action-btn">?? Go to GitHub</button>
+            <button class="error-action-btn secondary">? Back</button>
           </div>
         </div>
       </div>
@@ -2491,13 +2497,13 @@ function createFavoriteHistoryItem(item, index) {
     summaryDiv.className = 'error';
     summaryDiv.innerHTML = `
       <div class="error-content">
-        <div class="error-icon">Ⰰ</div>
+        <div class="error-icon">?</div>
         <div class="error-text">
           <h3 class="error-title">Extraction Timed Out</h3>
           <p class="error-description">The repository analysis took too long. This often happens with large repositories. Please ensure the page is fully loaded and try again.</p>
           <div class="error-actions">
-            <button class="error-action-btn">🔄 Retry Analysis</button>
-            <button class="error-action-btn secondary">← Back</button>
+            <button class="error-action-btn">?? Retry Analysis</button>
+            <button class="error-action-btn secondary">? Back</button>
           </div>
         </div>
       </div>

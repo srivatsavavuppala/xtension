@@ -1,5 +1,6 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any, Tuple
 import os
@@ -35,9 +36,30 @@ if not PINECONE_API_KEY:
 
 app = FastAPI()
 
-# Allow CORS for extension
-# Chrome extensions use chrome-extension:// origins, so we need to allow all origins
-# When allow_credentials is False, we can use allow_origins=["*"]
+# Custom CORS middleware as backup to ensure headers are always added
+class CustomCORSMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # Handle OPTIONS preflight
+        if request.method == "OPTIONS":
+            response = Response()
+            response.headers["Access-Control-Allow-Origin"] = "*"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+            response.headers["Access-Control-Allow-Credentials"] = "false"
+            return response
+        
+        # Process request
+        response = await call_next(request)
+        
+        # Add CORS headers to all responses
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Allow-Credentials"] = "false"
+        return response
+
+# Add both middleware layers for maximum compatibility
+app.add_middleware(CustomCORSMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -46,6 +68,24 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
 )
+
+@app.get("/")
+def read_root():
+    return {"message": "GitHub Repo Summarizer RAG API is running", "cors_enabled": True}
+
+@app.options("/{full_path:path}")
+async def options_handler(full_path: str, request: Request):
+    """Explicit OPTIONS handler for CORS preflight"""
+    return Response(
+        content="",
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Max-Age": "86400",
+        }
+    )
 
 class RepoInfo(BaseModel):
     repo: str

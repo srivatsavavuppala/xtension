@@ -36,12 +36,15 @@ if not PINECONE_API_KEY:
 app = FastAPI()
 
 # Allow CORS for extension
+# Chrome extensions use chrome-extension:// origins, so we need to allow all origins
+# When allow_credentials is False, we can use allow_origins=["*"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_credentials=False,  # Changed to False to allow wildcard origins
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 class RepoInfo(BaseModel):

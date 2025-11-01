@@ -37,6 +37,12 @@ if not PINECONE_API_KEY:
 
 app = FastAPI()
 
+
+@app.get("/")
+async def health_check():
+    """Basic health endpoint for uptime monitors"""
+    return {"status": "ok"}
+
 # Allow CORS for extension with proper configuration
 app.add_middleware(
     CORSMiddleware,

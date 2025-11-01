@@ -2,8 +2,21 @@
 import sys
 import os
 
-# Add src directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+# Determine the correct path to backend.py
+current_dir = os.path.dirname(os.path.abspath(__file__))
+src_path = os.path.join(current_dir, 'src')
+
+# Add src directory to path if it exists
+if os.path.exists(src_path):
+    sys.path.insert(0, src_path)
+elif os.path.exists(os.path.join(current_dir, 'backend.py')):
+    # If backend.py is in the same directory as app.py
+    sys.path.insert(0, current_dir)
+else:
+    # Try parent directory
+    parent_dir = os.path.dirname(current_dir)
+    if os.path.exists(os.path.join(parent_dir, 'src', 'backend.py')):
+        sys.path.insert(0, os.path.join(parent_dir, 'src'))
 
 # Import the FastAPI app
 from backend import app

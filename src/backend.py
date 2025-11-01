@@ -1,5 +1,6 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any, Tuple
 import os
@@ -41,27 +42,47 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Allow all origins including chrome extensions
     allow_credentials=True,
-    allow_methods=["*"],  # Allow all HTTP methods
-    allow_headers=["*"],  # Allow all headers
-    expose_headers=["*"],  # Expose all headers
-    max_age=3600,  # Cache preflight requests for 1 hour
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,
 )
 
 # Handle OPTIONS requests explicitly
 @app.options("/{path:path}")
 async def options_handler(path: str):
     """Handle CORS preflight requests"""
-    return {"message": "OK"}
+    return Response(status_code=204)
 
 # Add CORS headers middleware
 @app.middleware("http")
-async def add_cors_headers(request, call_next):
-    """Add CORS headers to all responses"""
-    response = await call_next(request)
-    response.headers["Access-Control-Allow-Origin"] = "*"
+async def add_cors_headers(request: Request, call_next):
+    """Add CORS headers to all responses, including preflight"""
+    if request.method == "OPTIONS":
+        response = Response(status_code=204)
+    else:
+        response = await call_next(request)
+
+    origin = request.headers.get("origin")
+    allow_origin = origin if origin else "*"
+    response.headers["Access-Control-Allow-Origin"] = allow_origin
     response.headers["Access-Control-Allow-Credentials"] = "true"
-    response.headers["Access-Control-Allow-Methods"] = "*"
-    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+
+    request_headers = request.headers.get("access-control-request-headers")
+    if request_headers:
+        response.headers["Access-Control-Allow-Headers"] = request_headers
+    else:
+        response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Accept, X-Requested-With"
+
+    existing_vary = response.headers.get("Vary")
+    if existing_vary:
+        if "Origin" not in existing_vary:
+            response.headers["Vary"] = f"{existing_vary}, Origin"
+    else:
+        response.headers["Vary"] = "Origin"
+
+    response.headers.setdefault("Access-Control-Max-Age", "86400")
     return response
 
 class RepoInfo(BaseModel):

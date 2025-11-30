@@ -951,11 +951,19 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
   const askInput = document.getElementById('askInput');
   const askBtn = document.getElementById('askBtn');
   const askResult = document.getElementById('askResult');
-  const DEFAULT_RAG_API_BASE = 'https://xtension.onrender.com';
+  // RAG API base - defaults to Vercel production domain, can be overridden
+  const DEFAULT_RAG_API_BASE = 'https://xtension-alpha.vercel.app';
   let RAG_API_BASE = DEFAULT_RAG_API_BASE;
   chrome.storage.local.get({ ragApiBase: null }, (cfg) => {
     if (cfg && cfg.ragApiBase) {
       RAG_API_BASE = cfg.ragApiBase;
+    } else {
+      // If no custom RAG API base, try to use the same as main API
+      chrome.storage.local.get({ vercelApiBase: null }, (vercelCfg) => {
+        if (vercelCfg && vercelCfg.vercelApiBase) {
+          RAG_API_BASE = vercelCfg.vercelApiBase;
+        }
+      });
     }
   });
   if (historyIcon) {
@@ -1041,7 +1049,7 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
           if (askResult) {
             askResult.innerHTML = '<div style="font-size: 13px; color: var(--empty-desc);">Indexing repo for semantic search…</div>';
           }
-          const res = await fetch(`${RAG_API_BASE}/build_embeddings`, {
+          const res = await fetch(`${RAG_API_BASE}/api/rag/build_embeddings`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ owner, repo })
@@ -1066,7 +1074,7 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
   }
 
   async function queryRepo(owner, repo, question) {
-    const res = await fetch(`${RAG_API_BASE}/query`, {
+    const res = await fetch(`${RAG_API_BASE}/api/rag/query`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ owner, repo, question })
@@ -1520,7 +1528,20 @@ document.head.appendChild(enhancedCitationStyles);
             console.log('[Xtension] Still working... waiting for backend response.');
           }, 20000);
           try {
-            const response = await fetchWithTimeout('https://xtension-git-main-srivatsavavuppalas-projects.vercel.app/api/', {
+            // Use production domain - can be overridden via Chrome storage
+            const DEFAULT_API_BASE = 'https://xtension-alpha.vercel.app';
+            
+            // Get custom API base from storage (async)
+            const getApiBase = () => {
+              return new Promise((resolve) => {
+                chrome.storage.local.get({ vercelApiBase: null }, (cfg) => {
+                  resolve(cfg && cfg.vercelApiBase ? cfg.vercelApiBase : DEFAULT_API_BASE);
+                });
+              });
+            };
+            
+            const API_BASE = await getApiBase();
+            const response = await fetchWithTimeout(`${API_BASE}/api/`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(repoInfo)

@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any, Tuple
+from urllib.parse import urlparse
 import os
 import time
 import hashlib
@@ -37,6 +38,87 @@ except ValueError:
     PINECONE_MAX_INDEXES = 5
 MAX_INDEX_NAME_LENGTH = 45
 
+def _normalize_origin_and_host(value: Optional[str]) -> Optional[Tuple[str, str]]:
+    if not value:
+        return None
+    raw = value.strip()
+    if not raw:
+        return None
+    raw = raw.rstrip("/")
+    if "://" not in raw:
+        raw = f"https://{raw}"
+    parsed = urlparse(raw)
+    host = parsed.netloc or parsed.path
+    if not host:
+        return None
+    scheme = parsed.scheme or "https"
+    host = host.lower()
+    normalized_origin = f"{scheme}://{host}"
+    return normalized_origin, host
+
+
+def _parse_allowed_origin_map(raw_value: Optional[str]) -> Dict[str, str]:
+    origin_map: Dict[str, str] = {}
+    if not raw_value:
+        return origin_map
+    for part in raw_value.split(","):
+        if not part.strip():
+            continue
+        normalized = _normalize_origin_and_host(part)
+        if not normalized:
+            continue
+        origin, host = normalized
+        origin_map[host] = origin
+    return origin_map
+
+
+def _extract_host_from_header(value: Optional[str]) -> Optional[str]:
+    normalized = _normalize_origin_and_host(value)
+    if not normalized:
+        return None
+    _, host = normalized
+    return host
+
+
+_allowed_origin_env_values: List[str] = []
+_env_allowed_origins = os.environ.get("ALLOWED_ORIGINS")
+if _env_allowed_origins:
+    _allowed_origin_env_values.append(_env_allowed_origins)
+_env_vercel_domain = os.environ.get("VERCEL_ALLOWED_DOMAIN")
+if _env_vercel_domain:
+    _allowed_origin_env_values.append(_env_vercel_domain)
+
+ALLOWED_ORIGIN_MAP = _parse_allowed_origin_map(",".join(_allowed_origin_env_values))
+
+
+def _resolve_request_origin(request: Request) -> Optional[str]:
+    if not ALLOWED_ORIGIN_MAP:
+        return "*"
+    header_candidates = [
+        request.headers.get("origin"),
+        request.headers.get("referer"),
+        request.headers.get("x-vercel-deployment-url"),
+    ]
+    for candidate in header_candidates:
+        host = _extract_host_from_header(candidate)
+        if host and host in ALLOWED_ORIGIN_MAP:
+            return ALLOWED_ORIGIN_MAP[host]
+    return None
+
+
+def _build_cors_headers(origin: Optional[str]) -> Dict[str, str]:
+    origin_value = origin or "*"
+    headers = {
+        "Access-Control-Allow-Origin": origin_value,
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Allow-Credentials": "false",
+        "Access-Control-Max-Age": "86400",
+    }
+    if origin_value != "*":
+        headers["Vary"] = "Origin"
+    return headers
+
 if not GROQ_API_KEY:
     print("Warning: GROQ_API_KEY not found in environment variables")
 if not PINECONE_API_KEY:
@@ -47,30 +129,33 @@ app = FastAPI()
 # Custom CORS middleware as backup to ensure headers are always added
 class CustomCORSMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        # Handle OPTIONS preflight
+        allowed_origin = _resolve_request_origin(request)
+        if allowed_origin is None:
+            return Response(
+                content="Origin not allowed. This API is restricted to approved domains.",
+                status_code=403
+            )
+
         if request.method == "OPTIONS":
-            response = Response()
-            response.headers["Access-Control-Allow-Origin"] = "*"
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-            response.headers["Access-Control-Allow-Headers"] = "*"
-            response.headers["Access-Control-Allow-Credentials"] = "false"
-            return response
+            return Response(
+                content="",
+                status_code=200,
+                headers=_build_cors_headers(allowed_origin)
+            )
         
-        # Process request
         response = await call_next(request)
         
-        # Add CORS headers to all responses
-        response.headers["Access-Control-Allow-Origin"] = "*"
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "*"
-        response.headers["Access-Control-Allow-Credentials"] = "false"
+        cors_headers = _build_cors_headers(allowed_origin)
+        for key, value in cors_headers.items():
+            response.headers[key] = value
         return response
 
 # Add both middleware layers for maximum compatibility
 app.add_middleware(CustomCORSMiddleware)
+_cors_allowed_origins = list(ALLOWED_ORIGIN_MAP.values()) if ALLOWED_ORIGIN_MAP else ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_allowed_origins,
     allow_credentials=False,  # Changed to False to allow wildcard origins
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
@@ -84,15 +169,16 @@ def read_root():
 @app.options("/{full_path:path}")
 async def options_handler(full_path: str, request: Request):
     """Explicit OPTIONS handler for CORS preflight"""
+    allowed_origin = _resolve_request_origin(request)
+    if allowed_origin is None:
+        return Response(
+            content="",
+            status_code=403,
+        )
     return Response(
         content="",
         status_code=200,
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "*",
-            "Access-Control-Max-Age": "86400",
-        }
+        headers=_build_cors_headers(allowed_origin)
     )
 
 class RepoInfo(BaseModel):

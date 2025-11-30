@@ -1,10 +1,17 @@
 {
   "functions": {
     "api/rag.py": {
-      "runtime": "python3.9"
+      "runtime": "vercel-python@3.11",
+      "memory": 1024,
+      "maxDuration": 300
     },
     "api/index.py": {
-      "runtime": "python3.9"
+      "runtime": "vercel-python@3.11",
+      "memory": 512,
+      "maxDuration": 120
     }
-  }
+  },
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/api/$1" }
+  ]
 }

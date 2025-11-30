@@ -45,6 +45,15 @@ A powerful browser extension that provides AI-powered analysis and visualization
    ```
 4. Load the extension in your browser
 
+## 🔐 Restricting Backend Access
+
+Deployments often expose the FastAPI backend as a public endpoint. To ensure only your Vercel frontend (or any other trusted web app) can call the API, configure one of the following environment variables before starting `backend.py`:
+
+- `ALLOWED_ORIGINS` – comma-separated list of full origins, e.g. `https://my-app.vercel.app,https://admin.my-app.com`
+- `VERCEL_ALLOWED_DOMAIN` – shortcut for a single domain; if you provide only the host (e.g. `my-app.vercel.app`) the backend automatically assumes `https://`
+
+When either variable is set, the backend inspects the incoming `Origin` / `Referer` headers and replies with **HTTP 403** if the request is not coming from an allow-listed domain. Leave both variables unset to keep the default permissive `*` CORS behaviour used for local development.
+
 ## 🎯 Usage
 
 ### Basic Analysis

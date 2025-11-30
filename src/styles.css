@@ -755,20 +755,28 @@ body.dark-theme .status-indicator.info {
 }
 
 /* Scrollbar styling */
+body::-webkit-scrollbar,
+#main::-webkit-scrollbar,
 #summary::-webkit-scrollbar {
   width: 6px;
 }
 
+body::-webkit-scrollbar-track,
+#main::-webkit-scrollbar-track,
 #summary::-webkit-scrollbar-track {
   background: rgba(0, 0, 0, 0.05);
   border-radius: 3px;
 }
 
+body::-webkit-scrollbar-thumb,
+#main::-webkit-scrollbar-thumb,
 #summary::-webkit-scrollbar-thumb {
   background: rgba(102, 126, 234, 0.3);
   border-radius: 3px;
 }
 
+body::-webkit-scrollbar-thumb:hover,
+#main::-webkit-scrollbar-thumb:hover,
 #summary::-webkit-scrollbar-thumb:hover {
   background: rgba(102, 126, 234, 0.5);
 }

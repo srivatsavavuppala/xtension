@@ -951,7 +951,7 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
   const askInput = document.getElementById('askInput');
   const askBtn = document.getElementById('askBtn');
   const askResult = document.getElementById('askResult');
-  const DEFAULT_RAG_API_BASE = 'https://xtension.onrender.com';
+  const DEFAULT_RAG_API_BASE = "https://xtension-alpha.vercel.app/api";
   let RAG_API_BASE = DEFAULT_RAG_API_BASE;
   chrome.storage.local.get({ ragApiBase: null }, (cfg) => {
     if (cfg && cfg.ragApiBase) {

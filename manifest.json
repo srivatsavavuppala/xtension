@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "GitHub Repo Summarizer",
   "version": "1.5",
-  "description": "Update: Latest Powered with Chat feature, AI & RAG powered GitHub repo summarizer. Generates concise overviews and downloadable project docs with a user-friendly UI.",
+  "description": "AI & RAG powered GitHub summarizer with concise overviews, downloadable docs, and chat feature",
   "permissions": ["scripting", "activeTab", "storage","tabs"],
   "host_permissions": ["https://github.com/*"],
   "background": {

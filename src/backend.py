@@ -8,6 +8,7 @@ import time
 import hashlib
 import requests
 import numpy as np
+import traceback
 
 try:
     from pinecone import Pinecone, ServerlessSpec
@@ -66,16 +67,16 @@ class CustomCORSMiddleware(BaseHTTPMiddleware):
         response.headers["Access-Control-Allow-Credentials"] = "false"
         return response
 
-# Add both middleware layers for maximum compatibility
-app.add_middleware(CustomCORSMiddleware)
+# CRITICAL: Add CORS middleware FIRST, in correct order
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False,  # Changed to False to allow wildcard origins
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_credentials=False,
+    allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
+app.add_middleware(CustomCORSMiddleware)
 
 @app.get("/")
 def read_root():
@@ -383,109 +384,119 @@ def check_if_indexed(owner: str, repo: str, branch: Optional[str] = None) -> boo
 
 @app.post("/build_embeddings", response_model=BuildEmbeddingsResponse)
 def build_embeddings(req: BuildEmbeddingsRequest):
-    start_time = time.time()
-    branch = req.branch or get_default_branch(req.owner, req.repo)
-    repo_id = get_repo_id(req.owner, req.repo, branch)
+    try:
+        print(f"[BuildEmbeddings] Starting for {req.owner}/{req.repo}")
+        start_time = time.time()
+        branch = req.branch or get_default_branch(req.owner, req.repo)
+        repo_id = get_repo_id(req.owner, req.repo, branch)
+        
+        print(f"[BuildEmbeddings] Using branch: {branch}, repo_id: {repo_id}")
     
-    # Create separate indexes for files and chunks
-    files_index, _, files_use_namespace = get_or_create_index(f"files-{repo_id}")
-    chunks_index, _, chunks_use_namespace = get_or_create_index(f"chunks-{repo_id}")
+        # Create separate indexes for files and chunks
+        files_index, _, files_use_namespace = get_or_create_index(f"files-{repo_id}")
+        chunks_index, _, chunks_use_namespace = get_or_create_index(f"chunks-{repo_id}")
 
-    files_namespace = repo_id if files_use_namespace else None
-    chunks_namespace = repo_id if chunks_use_namespace else None
-    
-    model = get_embedding_model()
-    files = list_repo_files(req.owner, req.repo, branch)
-    num_files = 0
-    num_chunks = 0
-    
-    # Process files
-    file_vectors = []
-    for path in files:
-        content = fetch_file_content(req.owner, req.repo, branch, path)
-        if not content:
-            continue
+        files_namespace = repo_id if files_use_namespace else None
+        chunks_namespace = repo_id if chunks_use_namespace else None
         
-        file_text = content[:10000]
-        file_id = sha1_id(repo_id, path)
-        file_emb = model.encode([file_text], convert_to_numpy=True)[0]
+        model = get_embedding_model()
+        files = list_repo_files(req.owner, req.repo, branch)
+        num_files = 0
+        num_chunks = 0
         
-        file_vectors.append({
-            'id': file_id,
-            'values': file_emb.tolist(),
-            'metadata': {
-                'repo_id': repo_id,
-                'owner': req.owner,
-                'repo': req.repo,
-                'branch': branch,
-                'file_path': path,
-                'type': 'file'
-            }
-        })
-        num_files += 1
-    
-    # Upsert files in batches
-    if file_vectors:
-        batch_size = 100
-        for i in range(0, len(file_vectors), batch_size):
-            batch = file_vectors[i:i + batch_size]
-            upsert_kwargs = {'vectors': batch}
-            if files_namespace:
-                upsert_kwargs['namespace'] = files_namespace
-            files_index.upsert(**upsert_kwargs)
-    
-    # Process chunks
-    chunk_vectors = []
-    for path in files:
-        content = fetch_file_content(req.owner, req.repo, branch, path)
-        if not content:
-            continue
-        
-        chunks = chunk_code(content)
-        for chunk_text, start_line, end_line in chunks:
-            chunk_id = sha1_id(repo_id, path, start_line, end_line)
-            chunk_emb = model.encode([chunk_text], convert_to_numpy=True)[0]
+        # Process files
+        file_vectors = []
+        for path in files:
+            content = fetch_file_content(req.owner, req.repo, branch, path)
+            if not content:
+                continue
             
-            chunk_vectors.append({
-                'id': chunk_id,
-                'values': chunk_emb.tolist(),
+            file_text = content[:10000]
+            file_id = sha1_id(repo_id, path)
+            file_emb = model.encode([file_text], convert_to_numpy=True)[0]
+            
+            file_vectors.append({
+                'id': file_id,
+                'values': file_emb.tolist(),
                 'metadata': {
                     'repo_id': repo_id,
                     'owner': req.owner,
                     'repo': req.repo,
                     'branch': branch,
                     'file_path': path,
-                    'start_line': start_line,
-                    'end_line': end_line,
-                    'text': chunk_text[:1000],  # Store truncated text for retrieval
-                    'type': 'chunk'
+                    'type': 'file'
                 }
             })
-            num_chunks += 1
+            num_files += 1
+        
+        # Upsert files in batches
+        if file_vectors:
+            batch_size = 100
+            for i in range(0, len(file_vectors), batch_size):
+                batch = file_vectors[i:i + batch_size]
+                upsert_kwargs = {'vectors': batch}
+                if files_namespace:
+                    upsert_kwargs['namespace'] = files_namespace
+                files_index.upsert(**upsert_kwargs)
+        
+        # Process chunks
+        chunk_vectors = []
+        for path in files:
+            content = fetch_file_content(req.owner, req.repo, branch, path)
+            if not content:
+                continue
             
-            # Batch upsert every 200 chunks
-            if len(chunk_vectors) >= 200:
-                upsert_kwargs = {'vectors': chunk_vectors}
-                if chunks_namespace:
-                    upsert_kwargs['namespace'] = chunks_namespace
-                chunks_index.upsert(**upsert_kwargs)
-                chunk_vectors = []
-    
-    # Upsert remaining chunks
-    if chunk_vectors:
-        upsert_kwargs = {'vectors': chunk_vectors}
-        if chunks_namespace:
-            upsert_kwargs['namespace'] = chunks_namespace
-        chunks_index.upsert(**upsert_kwargs)
-    
-    took = time.time() - start_time
-    return BuildEmbeddingsResponse(
-        repo_id=repo_id,
-        branch=branch,
-        num_files_indexed=num_files,
-        num_chunks_indexed=num_chunks,
-        took_seconds=round(took, 2),
-    )
+            chunks = chunk_code(content)
+            for chunk_text, start_line, end_line in chunks:
+                chunk_id = sha1_id(repo_id, path, start_line, end_line)
+                chunk_emb = model.encode([chunk_text], convert_to_numpy=True)[0]
+                
+                chunk_vectors.append({
+                    'id': chunk_id,
+                    'values': chunk_emb.tolist(),
+                    'metadata': {
+                        'repo_id': repo_id,
+                        'owner': req.owner,
+                        'repo': req.repo,
+                        'branch': branch,
+                        'file_path': path,
+                        'start_line': start_line,
+                        'end_line': end_line,
+                        'text': chunk_text[:1000],  # Store truncated text for retrieval
+                        'type': 'chunk'
+                    }
+                })
+                num_chunks += 1
+                
+                # Batch upsert every 200 chunks
+                if len(chunk_vectors) >= 200:
+                    upsert_kwargs = {'vectors': chunk_vectors}
+                    if chunks_namespace:
+                        upsert_kwargs['namespace'] = chunks_namespace
+                    chunks_index.upsert(**upsert_kwargs)
+                    chunk_vectors = []
+        
+        # Upsert remaining chunks
+        if chunk_vectors:
+            upsert_kwargs = {'vectors': chunk_vectors}
+            if chunks_namespace:
+                upsert_kwargs['namespace'] = chunks_namespace
+            chunks_index.upsert(**upsert_kwargs)
+        
+        took = time.time() - start_time
+        return BuildEmbeddingsResponse(
+            repo_id=repo_id,
+            branch=branch,
+            num_files_indexed=num_files,
+            num_chunks_indexed=num_chunks,
+            took_seconds=round(took, 2),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[BuildEmbeddings] Error: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to build embeddings: {str(e)}")
 
 
 class QueryRequest(BaseModel):
@@ -607,51 +618,93 @@ def _call_llm(question: str, context: str) -> str:
 
 @app.post("/query", response_model=QueryResponse)
 def query_repo(req: QueryRequest):
-    branch = req.branch or get_default_branch(req.owner, req.repo)
-    repo_id = get_repo_id(req.owner, req.repo, branch)
-    
-    model = get_embedding_model()
-    query_emb = model.encode([req.question], convert_to_numpy=True, show_progress_bar=False)[0]
-    
-    # Stage 1: retrieve relevant files
-    file_res = _query_pinecone_files(repo_id, query_emb, req.top_files)
-    file_paths: List[str] = []
-    if file_res and file_res.get('matches'):
-        for match in file_res['matches']:
-            if match.get('metadata') and match['metadata'].get('file_path'):
-                file_paths.append(match['metadata']['file_path'])
-    
-    # Stage 2: retrieve relevant chunks within those files
-    per_file = max(1, req.top_chunks // max(1, len(file_paths) or 1))
-    chunk_hits = _query_pinecone_chunks(repo_id, query_emb, file_paths, per_file)
-    top_chunks = chunk_hits[:req.top_chunks]
-    
-    if not top_chunks:
-        return QueryResponse(answer="No relevant code found for your question.", references=[])
-    
-    context_text = _format_context(top_chunks)
-    answer_text = _call_llm(req.question, context_text)
-    
-    # Build references
-    refs: List[Reference] = []
-    used = set()
-    for item in top_chunks:
-        m = item["meta"]
-        key = (m["file_path"], m["start_line"], m["end_line"])
-        if key in used:
-            continue
-        used.add(key)
-        refs.append(
-            Reference(
-                file_path=m["file_path"],
-                start_line=int(m["start_line"]),
-                end_line=int(m["end_line"]),
-                url=_build_citation_url(m["owner"], m["repo"], m["branch"], m["file_path"], int(m["start_line"]), int(m["end_line"]))
+    try:
+        print(f"[Query] Received request: owner={req.owner}, repo={req.repo}, question={req.question[:50]}...")
+        
+        branch = req.branch or get_default_branch(req.owner, req.repo)
+        repo_id = get_repo_id(req.owner, req.repo, branch)
+        
+        print(f"[Query] Using repo_id: {repo_id}, branch: {branch}")
+        
+        # Check if repo is indexed
+        try:
+            model = get_embedding_model()
+            query_emb = model.encode([req.question], convert_to_numpy=True, show_progress_bar=False)[0]
+        except Exception as e:
+            print(f"[Query] Error encoding query: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to encode query: {str(e)}")
+        
+        # Stage 1: retrieve relevant files
+        try:
+            file_res = _query_pinecone_files(repo_id, query_emb, req.top_files)
+            file_paths: List[str] = []
+            if file_res and file_res.get('matches'):
+                for match in file_res['matches']:
+                    if match.get('metadata') and match['metadata'].get('file_path'):
+                        file_paths.append(match['metadata']['file_path'])
+            
+            print(f"[Query] Found {len(file_paths)} relevant files")
+            
+            if not file_paths:
+                return QueryResponse(
+                    answer="No indexed files found. Please ensure the repository has been indexed first.",
+                    references=[]
+                )
+        except Exception as e:
+            print(f"[Query] Error retrieving files: {e}")
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Failed to retrieve files: {str(e)}")
+        
+        # Stage 2: retrieve relevant chunks within those files
+        try:
+            per_file = max(1, req.top_chunks // max(1, len(file_paths) or 1))
+            chunk_hits = _query_pinecone_chunks(repo_id, query_emb, file_paths, per_file)
+            top_chunks = chunk_hits[:req.top_chunks]
+            
+            print(f"[Query] Retrieved {len(top_chunks)} code chunks")
+            
+            if not top_chunks:
+                return QueryResponse(answer="No relevant code found for your question.", references=[])
+        except Exception as e:
+            print(f"[Query] Error retrieving chunks: {e}")
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Failed to retrieve code chunks: {str(e)}")
+        
+        # Generate answer
+        try:
+            context_text = _format_context(top_chunks)
+            answer_text = _call_llm(req.question, context_text)
+        except Exception as e:
+            print(f"[Query] Error generating answer: {e}")
+            answer_text = f"Error generating answer: {str(e)}\n\nRelevant code was found but couldn't generate a response."
+        
+        # Build references
+        refs: List[Reference] = []
+        used = set()
+        for item in top_chunks:
+            m = item["meta"]
+            key = (m["file_path"], m["start_line"], m["end_line"])
+            if key in used:
+                continue
+            used.add(key)
+            refs.append(
+                Reference(
+                    file_path=m["file_path"],
+                    start_line=int(m["start_line"]),
+                    end_line=int(m["end_line"]),
+                    url=_build_citation_url(m["owner"], m["repo"], m["branch"], m["file_path"], int(m["start_line"]), int(m["end_line"]))
+                )
             )
-        )
-    
-    return QueryResponse(answer=answer_text, references=refs)
-
+        
+        print(f"[Query] Successfully generated answer with {len(refs)} references")
+        return QueryResponse(answer=answer_text, references=refs)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[Query] Unexpected error: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 def _query_for_summary(owner: str, repo: str, branch: str, question: str, top_chunks: int = 20) -> str:
     """Internal function to query RAG system for summary generation"""

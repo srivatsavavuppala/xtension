@@ -710,13 +710,23 @@ hideInteractiveButtons();
           return;
         }
         
-        // Extract repo info from GitHub URL
         chrome.tabs.sendMessage(tabs[0].id, {action: 'extractRepoInfo'}, async (response) => {
+          if (chrome.runtime.lastError) {
+              console.error('Chrome runtime error:', chrome.runtime.lastError);
+              addMessage('Could not access the current tab. Please refresh and try again.', false);
+              return;
+          }
+          
           if (response) {
-            const { owner, repo } = response;
-            try {
-              const result = await queryRepo(owner, repo, question);
-              addMessage(result.answer, false);
+              const { owner, repo } = response;
+              try {
+                  addMessage('Searching through code...', false);
+                  const result = await queryRepo(owner, repo, question);
+                  const messages = chatMessages.querySelectorAll('.message.bot');
+                  if (messages.length > 0) {
+                      messages[messages.length - 1].remove();
+                  }
+                  addMessage(result.answer, false);
             } catch (error) {
               addMessage('Sorry, I encountered an error processing your question.', false);
             }

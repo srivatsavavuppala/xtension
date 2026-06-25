@@ -1400,10 +1400,10 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
   };
   
   historyIcon.onclick = function() {
-    // Add click animation
     historyIcon.style.transform = 'scale(0.95)';
     setTimeout(() => {
       historyIcon.style.transform = 'scale(1)';
+      showHistoryOverlay();
     }, 150);
   };
 }
@@ -2148,18 +2148,36 @@ document.head.appendChild(enhancedCitationStyles);
     `;
     modal.className = 'history-modal';
     const header = document.createElement('div');
-header.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 18px 24px 0 24px;';
+header.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 18px 24px 0 24px; gap: 8px;';
 const title = document.createElement('div');
-title.textContent = 'Repo History ⏳';
-title.style.cssText = 'font-size: 15px; font-weight: 600; color: var(--modal-title); max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;';
+title.style.cssText = 'display:flex;align-items:center;gap:6px;font-size: 15px; font-weight: 600; color: var(--modal-title); white-space: nowrap;';
+title.innerHTML = '<span class="material-icons" style="font-size:17px;color:var(--tab-active-color);">history</span> Repo History';
+const headerActions = document.createElement('div');
+headerActions.style.cssText = 'display:flex;align-items:center;gap:6px;';
+const clearAllBtn = document.createElement('button');
+clearAllBtn.title = 'Clear this list';
+clearAllBtn.style.cssText = 'display:flex;align-items:center;gap:4px;padding:5px 10px;border-radius:7px;border:none;background:rgba(239,68,68,0.1);color:#ef4444;font-size:12px;font-weight:600;cursor:pointer;transition:background 0.2s;';
+clearAllBtn.innerHTML = '<span class="material-icons" style="font-size:14px;">delete_sweep</span> Clear';
+clearAllBtn.onmouseover = () => { clearAllBtn.style.background = 'rgba(239,68,68,0.2)'; };
+clearAllBtn.onmouseout = () => { clearAllBtn.style.background = 'rgba(239,68,68,0.1)'; };
+clearAllBtn.onclick = () => {
+  const tabStorageKeys = { analyzed: 'analyzedHistory', visited: 'visitedRepos', favorites: 'favoriteRepos' };
+  const key = tabStorageKeys[currentTab];
+  if (!key) return;
+  chrome.storage.local.set({ [key]: [] }, () => {
+    loadHistoryContent();
+  });
+};
 const closeBtn = document.createElement('button');
-closeBtn.innerHTML = '✖';
+closeBtn.innerHTML = '<span class="material-icons" style="font-size:18px;">close</span>';
 closeBtn.setAttribute('aria-label', 'Close');
-closeBtn.style.cssText = 'width: 32px; height: 32px; min-width: 32px; min-height: 32px; max-width: 32px; max-height: 32px; display: flex; align-items: center; justify-content: center; background: none; border: none; font-size: 18px; color: var(--modal-close); cursor: pointer; border-radius: 6px; transition: background 0.2s; margin-left: 8px;';
+closeBtn.style.cssText = 'width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: none; border: none; color: var(--modal-close); cursor: pointer; border-radius: 6px; transition: background 0.2s;';
 closeBtn.onmouseover = () => { closeBtn.style.background = 'var(--modal-hover)'; };
 closeBtn.onmouseout = () => { closeBtn.style.background = 'none'; };
+headerActions.appendChild(clearAllBtn);
+headerActions.appendChild(closeBtn);
 header.appendChild(title);
-header.appendChild(closeBtn);
+header.appendChild(headerActions);
 modal.appendChild(header);
     const tabContainer = document.createElement('div');
     tabContainer.style.cssText = 'display: flex; border-bottom: 1px solid #e2e8f0; margin: 18px 0 0 0; z-index: 10002;';

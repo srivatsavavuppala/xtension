@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "GitHub Repo Summarizer",
-  "version": "1.6",
-  "description": "v1.6: Aurora glassmorphism UI, light/dark theme-aware buttons, redesigned chat suggestions, scrollbar-free panels, and layout polish.",
-  "permissions": ["scripting", "activeTab", "storage","tabs"],
+  "version": "1.7",
+  "description": "v1.7: Voice input in chat, three-dot menu with History & Clear Session, aurora glassmorphism UI, light/dark theme-aware buttons, suggestion chips, and scrollbar-free panels.",
+  "permissions": ["scripting", "activeTab", "storage", "tabs"],
   "host_permissions": ["https://github.com/*"],
   "background": {
     "service_worker": "src/background.js"

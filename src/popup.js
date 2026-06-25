@@ -465,23 +465,41 @@ body.dark-theme #history-icon {
       outline: none !important;
     }
 
-    .chat-send-btn {
+    .chat-send-btn, .chat-mic-btn {
       width: 40px !important;
       height: 40px !important;
       border-radius: 50% !important;
       display: flex !important;
       align-items: center !important;
       justify-content: center !important;
-      background: var(--tab-active-color) !important;
-      color: white !important;
       border: none !important;
       cursor: pointer !important;
-      transition: transform 0.2s ease !important;
-      margin-left: 8px !important;
+      transition: transform 0.2s ease, background 0.2s !important;
+      flex-shrink: 0 !important;
     }
 
-    .chat-send-btn:hover {
-      transform: scale(1.05) !important;
+    .chat-send-btn {
+      background: var(--tab-active-color) !important;
+      color: white !important;
+    }
+
+    .chat-mic-btn {
+      background: rgba(99,102,241,0.12) !important;
+      color: var(--tab-active-color) !important;
+    }
+
+    .chat-send-btn:hover { transform: scale(1.05) !important; }
+    .chat-mic-btn:hover { background: rgba(99,102,241,0.22) !important; transform: scale(1.05) !important; }
+
+    .chat-mic-btn.listening {
+      background: rgba(239,68,68,0.15) !important;
+      color: #ef4444 !important;
+      animation: micPulse 1s ease-in-out infinite !important;
+    }
+
+    @keyframes micPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4) !important; }
+      50%       { box-shadow: 0 0 0 8px rgba(239,68,68,0) !important; }
     }
 
     .chat-back-btn {
@@ -796,6 +814,9 @@ function createChatOverlay() {
         <div class="chat-body" id="chat-messages"></div>
         <div class="chat-input-container">
           <input type="text" class="chat-input" id="chat-input" placeholder="Ask about this repository...">
+          <button class="chat-mic-btn" id="chat-mic" title="Voice input">
+            <span class="material-icons">mic</span>
+          </button>
           <button class="chat-send-btn" id="chat-send">
             <span class="material-icons">send</span>
           </button>
@@ -805,8 +826,63 @@ function createChatOverlay() {
 
       const chatInput = document.getElementById('chat-input');
       const chatSend = document.getElementById('chat-send');
+      const chatMic = document.getElementById('chat-mic');
       const chatMessages = document.getElementById('chat-messages');
-      
+
+      // Voice input via Web Speech API
+      if (chatMic) {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecognition) {
+          let recognition = null;
+          let listening = false;
+
+          chatMic.onclick = () => {
+            if (listening) {
+              recognition && recognition.stop();
+              return;
+            }
+            recognition = new SpeechRecognition();
+            recognition.lang = 'en-US';
+            recognition.interimResults = true;
+            recognition.maxAlternatives = 1;
+
+            recognition.onstart = () => {
+              listening = true;
+              chatMic.classList.add('listening');
+              chatMic.title = 'Listening… click to stop';
+              chatInput.placeholder = 'Listening…';
+            };
+
+            recognition.onresult = (event) => {
+              const transcript = Array.from(event.results)
+                .map(r => r[0].transcript).join('');
+              chatInput.value = transcript;
+              if (event.results[event.results.length - 1].isFinal) {
+                recognition.stop();
+              }
+            };
+
+            recognition.onerror = () => {
+              listening = false;
+              chatMic.classList.remove('listening');
+              chatInput.placeholder = 'Ask about this repository...';
+              chatMic.title = 'Voice input';
+            };
+
+            recognition.onend = () => {
+              listening = false;
+              chatMic.classList.remove('listening');
+              chatInput.placeholder = 'Ask about this repository...';
+              chatMic.title = 'Voice input';
+            };
+
+            recognition.start();
+          };
+        } else {
+          chatMic.style.display = 'none';
+        }
+      }
+
       // Define showSuggestedQuestions in local scope so it can access chatMessages
       const showSuggestedQuestions = function(_owner, _repo) {
         const suggestions = [
@@ -1426,7 +1502,7 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
       { icon: 'delete_sweep',  label: 'Clear Session',  action: () => {
           menu.remove();
           chrome.storage.local.remove(['summaryStatus', 'summaryResult', 'summaryTab', 'chatOverlayOpen'], () => {
-            showMessage('Session cleared. You can generate a new summary now.', 'info');
+            showMessage('Session cleared', 'info');
             hideInteractiveButtons();
             hideAskPanel();
             closeChatOverlay();
@@ -2120,7 +2196,7 @@ document.head.appendChild(enhancedCitationStyles);
   if (clearSessionBtn) {
     clearSessionBtn.addEventListener('click', () => {
       chrome.storage.local.remove(['summaryStatus', 'summaryResult', 'summaryTab', 'chatOverlayOpen'], () => {
-        showMessage('Session cleared. You can generate a new summary now.', 'info');
+        showMessage('Session cleared', 'info');
         hideInteractiveButtons();
         if (clearSessionBtn){
           clearSessionBtn.style.display = 'none';

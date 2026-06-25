@@ -829,58 +829,52 @@ function createChatOverlay() {
       const chatMic = document.getElementById('chat-mic');
       const chatMessages = document.getElementById('chat-messages');
 
-      // Voice input via Web Speech API
+      // Voice input — delegated to content script so popup stays open
       if (chatMic) {
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (SpeechRecognition) {
-          let recognition = null;
-          let listening = false;
+        let listening = false;
 
-          chatMic.onclick = () => {
+        const setMicActive = (active) => {
+          listening = active;
+          if (active) {
+            chatMic.classList.add('listening');
+            chatMic.querySelector('.material-icons').textContent = 'mic';
+            chatMic.title = 'Listening… click to stop';
+            chatInput.placeholder = 'Listening…';
+          } else {
+            chatMic.classList.remove('listening');
+            chatMic.querySelector('.material-icons').textContent = 'mic';
+            chatMic.title = 'Voice input';
+            chatInput.placeholder = 'Ask about this repository...';
+          }
+        };
+
+        // Listen for result sent back from content script
+        chrome.runtime.onMessage.addListener(function speechListener(msg) {
+          if (msg.action === 'speechResult') {
+            chatInput.value = msg.text;
+            setMicActive(false);
+          } else if (msg.action === 'speechError') {
+            setMicActive(false);
+          }
+        });
+
+        chatMic.onclick = () => {
+          chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (!tabs[0]) return;
             if (listening) {
-              recognition && recognition.stop();
+              chrome.tabs.sendMessage(tabs[0].id, { action: 'stopSpeech' });
+              setMicActive(false);
               return;
             }
-            recognition = new SpeechRecognition();
-            recognition.lang = 'en-US';
-            recognition.interimResults = true;
-            recognition.maxAlternatives = 1;
-
-            recognition.onstart = () => {
-              listening = true;
-              chatMic.classList.add('listening');
-              chatMic.title = 'Listening… click to stop';
-              chatInput.placeholder = 'Listening…';
-            };
-
-            recognition.onresult = (event) => {
-              const transcript = Array.from(event.results)
-                .map(r => r[0].transcript).join('');
-              chatInput.value = transcript;
-              if (event.results[event.results.length - 1].isFinal) {
-                recognition.stop();
+            chrome.tabs.sendMessage(tabs[0].id, { action: 'startSpeech' }, (resp) => {
+              if (chrome.runtime.lastError || (resp && resp.error)) {
+                chatMic.style.display = 'none';
+                return;
               }
-            };
-
-            recognition.onerror = () => {
-              listening = false;
-              chatMic.classList.remove('listening');
-              chatInput.placeholder = 'Ask about this repository...';
-              chatMic.title = 'Voice input';
-            };
-
-            recognition.onend = () => {
-              listening = false;
-              chatMic.classList.remove('listening');
-              chatInput.placeholder = 'Ask about this repository...';
-              chatMic.title = 'Voice input';
-            };
-
-            recognition.start();
-          };
-        } else {
-          chatMic.style.display = 'none';
-        }
+              setMicActive(true);
+            });
+          });
+        };
       }
 
       // Define showSuggestedQuestions in local scope so it can access chatMessages

@@ -1,4 +1,48 @@
+// Speech recognition handler — runs in the tab so it doesn't close the popup
+let activeRecognition = null;
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'startSpeech') {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      sendResponse({ error: 'not_supported' });
+      return true;
+    }
+    if (activeRecognition) {
+      activeRecognition.stop();
+      activeRecognition = null;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    activeRecognition = recognition;
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      chrome.runtime.sendMessage({ action: 'speechResult', text: transcript });
+    };
+    recognition.onerror = (event) => {
+      chrome.runtime.sendMessage({ action: 'speechError', error: event.error });
+      activeRecognition = null;
+    };
+    recognition.onend = () => {
+      activeRecognition = null;
+    };
+    recognition.start();
+    sendResponse({ started: true });
+    return true;
+  }
+
+  if (request.action === 'stopSpeech') {
+    if (activeRecognition) {
+      activeRecognition.stop();
+      activeRecognition = null;
+    }
+    sendResponse({ stopped: true });
+    return true;
+  }
+
   if (request.action === 'extractRepoInfo') {
     try {
       // Extract minimal repo info

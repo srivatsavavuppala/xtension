@@ -746,7 +746,20 @@ function loadChatHistory(owner, repo, chatMessages) {
     messages.forEach(msg => {
       const msgEl = document.createElement('div');
       msgEl.className = `message ${msg.sender}`;
-      msgEl.textContent = msg.message;
+      if (msg.sender === 'user') {
+        msgEl.textContent = msg.message;
+      } else {
+        // Re-render with formatting; citations become dead badges (refs not stored)
+        const escaped = msg.message
+          .replace(/```[\w]*\n?([\s\S]*?)```/g, (_, c) =>
+            `<pre style="background:var(--summary-bg);padding:10px 12px;border-radius:6px;overflow-x:auto;font-size:11px;margin:8px 0;"><code>${c.replace(/</g,'&lt;').replace(/>/g,'&gt;').trim()}</code></pre>`)
+          .replace(/`([^`]+)`/g, '<code style="background:var(--summary-bg);padding:1px 5px;border-radius:3px;font-size:11px;font-family:monospace;">$1</code>')
+          .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+          .replace(/\[(\d+)\]/g, '<span style="display:inline-flex;align-items:center;background:rgba(102,126,234,0.12);color:var(--tab-active-color);border:1px solid rgba(102,126,234,0.3);border-radius:4px;padding:0 5px;font-size:10px;font-weight:700;vertical-align:super;line-height:1.5;">[$1]</span>')
+          .replace(/\n\n+/g, '</p><p style="margin:6px 0 0;">')
+          .replace(/\n/g, '<br>');
+        msgEl.innerHTML = `<p style="margin:0;">${escaped}</p>`;
+      }
       chatMessages.appendChild(msgEl);
     });
     
@@ -935,31 +948,83 @@ function createChatOverlay() {
       const addMessage = function(text, isUser) {
         const message = document.createElement('div');
         message.className = `message ${isUser ? 'user' : 'bot'}`;
-        
         if (isUser) {
           message.textContent = text;
         } else {
-          message.innerHTML = formatBotMessage(text);
+          message.innerHTML = formatBotMessage(text, []);
         }
-        
         chatMessages.appendChild(message);
         chatMessages.scrollTop = chatMessages.scrollHeight;
-        
-        // Save message to history
         const owner = chatOverlay.dataset.owner;
         const repo = chatOverlay.dataset.repo;
-        if (owner && repo) {
-          saveChatMessage(owner, repo, text, isUser ? 'user' : 'bot');
-        }
+        if (owner && repo) saveChatMessage(owner, repo, text, isUser ? 'user' : 'bot');
       };
 
-      const formatBotMessage = function(text) {
-        text = text.replace(/```(\w+)?\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
-        text = text.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+      const formatBotMessage = function(text, refs) {
+        // Code blocks — escape HTML inside so code renders safely
+        text = text.replace(/```[\w]*\n?([\s\S]*?)```/g, (_, code) =>
+          `<pre style="background:var(--summary-bg);padding:10px 12px;border-radius:6px;overflow-x:auto;font-size:11px;margin:8px 0;line-height:1.5;"><code>${code.replace(/</g,'&lt;').replace(/>/g,'&gt;').trim()}</code></pre>`
+        );
+        // Inline code
+        text = text.replace(/`([^`]+)`/g,
+          '<code style="background:var(--summary-bg);padding:1px 5px;border-radius:3px;font-size:11px;font-family:monospace;">$1</code>'
+        );
+        // Bold
         text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        // Citation badges [1] [2] — must come before markdown link replacement
+        text = text.replace(/\[(\d+)\]/g, (match, num) => {
+          const ref = refs && refs[parseInt(num) - 1];
+          const style = 'display:inline-flex;align-items:center;justify-content:center;background:rgba(102,126,234,0.12);color:var(--tab-active-color);border:1px solid rgba(102,126,234,0.3);border-radius:4px;padding:0 5px;font-size:10px;font-weight:700;text-decoration:none;vertical-align:super;line-height:1.5;cursor:pointer;transition:background 0.15s;';
+          if (ref) {
+            return `<a href="${ref.url}" target="_blank" style="${style}" onmouseover="this.style.background='rgba(102,126,234,0.25)'" onmouseout="this.style.background='rgba(102,126,234,0.12)'">[${num}]</a>`;
+          }
+          return `<span style="${style}">[${num}]</span>`;
+        });
+        // Markdown links
+        text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g,
+          '<a href="$2" target="_blank" style="color:var(--tab-active-color);text-decoration:underline;">$1</a>'
+        );
+        // Paragraphs and line breaks
+        text = text.replace(/\n\n+/g, '</p><p style="margin:6px 0 0;">');
         text = text.replace(/\n/g, '<br>');
-        text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
-        return text;
+        return `<p style="margin:0;">${text}</p>`;
+      };
+
+      const addBotAnswer = function(answer, references) {
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'message bot';
+
+        let html = formatBotMessage(answer, references);
+
+        if (references && references.length > 0) {
+          const refsHtml = references.slice(0, 5).map((ref, idx) => {
+            const filename = ref.file_path.split('/').pop();
+            return `<a href="${ref.url}" target="_blank" style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;margin:3px 0;background:var(--summary-bg);border-radius:6px;text-decoration:none;border-left:2px solid var(--tab-active-color);">
+              <span style="color:var(--tab-active-color);font-size:10px;font-weight:700;min-width:18px;padding-top:2px;">[${idx+1}]</span>
+              <div style="min-width:0;">
+                <div style="font-size:11px;font-weight:600;color:var(--modal-title);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${filename}</div>
+                <div style="font-size:10px;color:var(--empty-desc);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${ref.file_path} · L${ref.start_line}–${ref.end_line}</div>
+              </div>
+            </a>`;
+          }).join('');
+          const more = references.length > 5
+            ? `<div style="font-size:10px;color:var(--empty-desc);text-align:center;margin-top:4px;">+${references.length - 5} more</div>`
+            : '';
+          html += `<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--modal-border);">
+            <div style="font-size:11px;font-weight:600;color:var(--empty-desc);margin-bottom:6px;display:flex;align-items:center;gap:4px;">
+              <span class="material-icons" style="font-size:13px;">code</span>Code References
+            </div>
+            ${refsHtml}${more}
+          </div>`;
+        }
+
+        msgDiv.innerHTML = html;
+        chatMessages.appendChild(msgDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+
+        const owner = chatOverlay.dataset.owner;
+        const repo = chatOverlay.dataset.repo;
+        if (owner && repo) saveChatMessage(owner, repo, answer, 'bot');
       };
 
       // Loading indicator with progress messages
@@ -1048,12 +1113,7 @@ function createChatOverlay() {
                 buildEmbeddings(owner, repo); // fire-and-forget — index in background
                 const result = await queryRepo(owner, repo, question);
                 removeLoader(typingDiv);
-                addMessage(result.answer, false);
-
-                // Add references if available
-                if (result.references && result.references.length > 0) {
-                  addReferences(result.references);
-                }
+                addBotAnswer(result.answer, result.references || []);
               } catch (error) {
                 removeLoader(typingDiv);
                 addMessage('Sorry, I encountered an error processing your question. Please try again.', false);

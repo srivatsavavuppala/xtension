@@ -604,8 +604,7 @@ def _answer_from_readme(owner: str, repo: str, question: str) -> QueryResponse:
         pass
 
     context = f"README for {owner}/{repo}:\n\n{readme}" if readme else f"Repository: {owner}/{repo} (no README found)"
-    note = "\n\n*(Answering from README — full code search will be available after indexing completes.)*"
-    answer = _call_llm(question, context) + note
+    answer = _call_llm(question, context)
     return QueryResponse(answer=answer, references=[])
 
 

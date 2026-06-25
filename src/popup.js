@@ -1507,6 +1507,9 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
             hideInteractiveButtons();
             hideAskPanel();
             closeChatOverlay();
+            // Keep chat icon visible — chat works without analysis
+            const ci = document.getElementById('chat-icon');
+            if (ci) ci.style.display = 'flex';
           });
         }
       }

@@ -11,157 +11,70 @@
     html, body {
       width: 380px;
       min-height: 500px;
-      max-height: 600px;
+      max-height: 620px;
       overflow-x: hidden;
       overflow-y: auto;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
     }
+    html::-webkit-scrollbar,
+    body::-webkit-scrollbar { display: none; width: 0; }
     #main {
-      min-height: 480px;
-      min-width: 340px;
-      max-width: 380px;
+      min-height: 500px;
+      width: 380px;
       position: relative;
       display: flex;
       flex-direction: column;
-    }
-    .download-container {
-      margin-top: 16px;
-      margin-bottom: 16px;
-    }
-    #downloadBtn {
-      width: 100%;
-      padding: 12px;
-      font-size: 14px;
-      border-radius: 8px;
-      background: var(--tab-active-color) !important;
-      color: white !important;
-      border: none;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-    #downloadBtn:hover {
-      opacity: 0.9;
-      transform: translateY(-1px);
-    }
-    .button-container {
-      padding: 0 16px;
+      align-items: center;
     }
     #ask-repo {
-      padding: 16px;
-      margin: 16px;
+      margin: 0 16px 16px;
       background: var(--modal-bg);
       border-radius: 12px;
       border: 1px solid var(--modal-border);
-    }
-    .ask-header {
-      font-size: 16px;
-      font-weight: 600;
-      color: var(--modal-title);
-      margin-bottom: 12px;
-    }
-    .ask-input-container {
       display: flex;
-      gap: 8px;
-      align-items: center;
-      margin-bottom: 16px;
+      flex-direction: column;
+      max-height: 400px;
+      overflow: hidden;
     }
-    #askInput {
-      flex: 1;
-      padding: 10px 12px;
-      border-radius: 8px;
-      border: 1px solid var(--modal-border);
-      background: var(--popup-bg);
-      color: var(--popup-text);
-      font-size: 14px;
-      outline: none;
-      transition: all 0.2s ease;
-    }
-    #askInput:focus {
-      border-color: var(--tab-active-color);
-      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
-    }
-    #askBtn {
-      background: var(--tab-active-color) !important;
-      color: white !important;
-      padding: 8px;
-      border-radius: 8px;
-      border: none;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.2s ease;
-    }
-    #askBtn:hover {
-      opacity: 0.9;
-      transform: translateY(-1px);
-    }
-    #askBtn .material-icons {
-      font-size: 20px;
-    }
-    #askResult {
-      max-height: 300px;
-      overflow-y: auto;
-      margin-top: 12px;
-      font-size: 14px;
-      line-height: 1.6;
-    }
-    .chat-icon-btn {
-      width: 40px;
-      height: 40px;
-      padding: 8px;
-      border-radius: 8px;
-      background: var(--tab-active-color) !important;
-      color: white !important;
-      border: none;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.2s ease;
-    }
-    .chat-icon-btn:hover {
-      opacity: 0.9;
-      transform: translateY(-1px);
-    }
-    .chat-icon-btn img {
-      width: 24px;
-      height: 24px;
-      filter: brightness(0) invert(1);
-    }
+    .ask-header { font-size: 15px; font-weight: 600; color: var(--modal-title); padding: 14px 16px 10px; border-bottom: 1px solid var(--modal-border); flex-shrink: 0; }
+    .ask-input-container { display: flex; gap: 8px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--modal-border); flex-shrink: 0; }
+    #askInput { flex: 1; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--modal-border); background: var(--popup-bg); color: var(--popup-text); font-size: 13px; outline: none; transition: border-color 0.2s; }
+    #askInput:focus { border-color: var(--tab-active-color); }
+    #askBtn { background: var(--tab-active-color) !important; color: white !important; padding: 9px; border-radius: 8px; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; min-width: 38px; height: 38px; flex-shrink: 0; }
+    #askResult { flex: 1; overflow-y: auto; padding: 14px; font-size: 13px; line-height: 1.6; min-height: 80px; max-height: 240px; scrollbar-width: none; -ms-overflow-style: none; }
+    #askResult::-webkit-scrollbar { display: none; width: 0; }
   </style>
 </head>
 <body>
+  <div class="aurora-mid"></div>
   <div id="main">
-    <img src="../icons/history.png" id="history-icon" title="View history">
-
-    <div class="header">
+    <button id="history-icon" title="Menu">
+      <span class="material-icons" style="font-size:18px;line-height:1;">more_vert</span>
+    </button>
+    <div class="hero">
       <div class="logo">
-        <img src="../icons/icon48.png" alt="Repo Summarizer">
+        <img src="../icons/icon48.png" alt="Xtension">
       </div>
       <h2>Repo Summarizer</h2>
       <p class="subtitle">AI-powered GitHub analysis</p>
     </div>
-    
-    <div class="button-container">
+    <div class="action-stack">
       <button id="summarizeBtn">
-        <span class="button-text">✨ Analyze Repository</span>
+        <span class="material-icons btn-icon">auto_awesome</span>
+        Analyze Repository
       </button>
     </div>
-    
     <div id="summary"></div>
-    
-    <div class="button-container download-container">
-      <div style="display: flex; gap: 8px; align-items: center;">
-        <button id="downloadBtn" style="flex: 1;">
-          📄 Download Project Report
-        </button>
-        <button id="chat-icon" class="chat-icon-btn" title="Chat with Repository">
-          <img src="../icons/chat.png" alt="Chat">
-        </button>
-      </div>
+    <div class="download-area">
+      <button id="downloadBtn">
+        <span class="material-icons btn-icon">file_download</span>
+        Download Report
+      </button>
+      <button id="chat-icon" title="Chat with this repo">
+        <img src="../icons/chat.png" alt="Chat">
+      </button>
     </div>
-    
-    <!-- <button id="clearSessionBtn">🧹</button> -->
   </div>
   <script src="popup.js"></script>
 </body>

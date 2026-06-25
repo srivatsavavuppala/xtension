@@ -216,6 +216,13 @@
       overflow-y: auto !important;
       padding: 20px 24px !important;
       min-height: 0 !important;
+      scrollbar-width: none !important;
+      -ms-overflow-style: none !important;
+    }
+
+    .tree-modal-content::-webkit-scrollbar {
+      display: none !important;
+      width: 0 !important;
     }
 
     .repo-tree {
@@ -282,11 +289,11 @@ function showInteractiveButtons() {
   const downloadBtn = document.getElementById('downloadBtn');
   const chatIcon = document.getElementById('chat-icon');
   if (downloadBtn) {
-    downloadBtn.style.display = 'block';
+    downloadBtn.style.display = 'flex';
+    downloadBtn.style.opacity = '1';
+    downloadBtn.style.transform = 'translateY(0)';
   }
-  if (chatIcon) {
-    chatIcon.style.display = 'block';
-  }
+  if (chatIcon) chatIcon.style.display = 'flex';
 }
 
 function hideInteractiveButtons() {
@@ -306,8 +313,10 @@ function closeChatOverlay() {
 }
 const themeStyle = document.createElement('style');
 themeStyle.textContent = `
+body.dark-theme {
+  background: #07071a !important;
+}
 body {
-  background: var(--popup-bg) !important;
   color: var(--popup-text) !important;
 }
 .history-modal, .analyzed-btn-row, .favorite-btn, .remove-fav-btn {
@@ -319,7 +328,7 @@ body {
 .status-indicator.error { color: #dc2626; }
 .status-indicator.loading { color: #f59e42; }
 .status-indicator.info { color: #2563eb; }
-button, .tab-btn, .favorite-btn {
+.tab-btn, .favorite-btn {
   background: #f1f5f9 !important;
   color: #23272e !important;
   border-color: #e2e8f0 !important;
@@ -359,11 +368,11 @@ body.dark-theme, body.dark-theme #popup {
 }
 
 body.dark-theme #main {
-  background: rgba(35, 35, 42, 0.95) !important;
+  background: rgba(15,14,35,0.78) !important;
   color: #f1f5f9 !important;
-  backdrop-filter: blur(20px) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2) !important;
+  backdrop-filter: blur(32px) saturate(180%) !important;
+  border: 1px solid rgba(99,102,241,0.18) !important;
+  box-shadow: 0 8px 40px rgba(99,102,241,0.18), 0 2px 12px rgba(0,0,0,0.4) !important;
 }
 
 body.dark-theme h2 {
@@ -377,11 +386,6 @@ body.dark-theme .subtitle {
   color: #a3a3a3 !important;
 }
 
-body.dark-theme button {
-  background: linear-gradient(135deg, #334155 0%, #1e293b 100%) !important;
-  color: #f1f5f9 !important;
-}
-
 body.dark-theme #theme-toggle,
 body.dark-theme #history-icon {
   background: transparent !important;
@@ -391,53 +395,10 @@ body.dark-theme #history-icon {
 }
 
     body.dark-theme #theme-toggle:hover,
-    body.dark-theme #history-icon:hover,
-    body.dark-theme #chat-icon:hover {
+    body.dark-theme #history-icon:hover {
       background: transparent !important;
       border: none !important;
       box-shadow: none !important;
-    }
-
-    .floating-icon {
-      position: fixed !important;
-      bottom: 20px !important;
-      right: 20px !important;
-      width: 48px !important;
-      height: 48px !important;
-      border-radius: 50% !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      cursor: pointer !important;
-      background: var(--tab-active-color) !important;
-      border: 2px solid rgba(255, 255, 255, 0.2) !important;
-      color: white !important;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-      backdrop-filter: blur(4px) !important;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
-      z-index: 1000 !important;
-      opacity: 0.9 !important;
-    }
-
-    .floating-icon:hover {
-      transform: translateY(-4px) !important;
-      opacity: 1 !important;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25) !important;
-    }
-
-    .floating-icon .material-icons {
-      font-size: 24px !important;
-    }
-
-    .floating-icon img {
-      width: 32px !important;
-      height: 32px !important;
-      filter: brightness(1.2) !important;
-      transition: transform 0.3s ease !important;
-    }
-
-    .floating-icon:hover img {
-      transform: scale(1.1) !important;
     }
 
     .chat-overlay {
@@ -477,6 +438,13 @@ body.dark-theme #history-icon {
       flex: 1 !important;
       overflow-y: auto !important;
       padding: 16px !important;
+      scrollbar-width: none !important;
+      -ms-overflow-style: none !important;
+    }
+
+    .chat-body::-webkit-scrollbar {
+      display: none !important;
+      width: 0 !important;
     }
 
     .chat-input-container {
@@ -641,7 +609,7 @@ body.dark-theme .status-indicator.success { color: #22d3ee; }
 body.dark-theme .status-indicator.error { color: #f87171; }
 body.dark-theme .status-indicator.loading { color: #fbbf24; }
 body.dark-theme .status-indicator.info { color: #a3e635; }
-body.dark-theme button, body.dark-theme .tab-btn, body.dark-theme .favorite-btn {
+body.dark-theme .tab-btn, body.dark-theme .favorite-btn {
   background: #23232a !important;
   color: #f1f5f9 !important;
   border-color: #27272a !important;
@@ -842,61 +810,73 @@ function createChatOverlay() {
       // Define showSuggestedQuestions in local scope so it can access chatMessages
       const showSuggestedQuestions = function(_owner, _repo) {
         const suggestions = [
-          "What does this repository do?",
-          "What are the main technologies used?",
-          "How is the code organized?",
-          "What are the key features?",
-          "How do I get started?"
+          { icon: 'info_outline',        text: "What does this repository do?" },
+          { icon: 'code',                text: "What are the main technologies used?" },
+          { icon: 'account_tree',        text: "How is the code organized?" },
+          { icon: 'star_outline',        text: "What are the key features?" },
+          { icon: 'play_circle_outline', text: "How do I get started?" }
         ];
-        
+
         const welcomeMsg = document.createElement('div');
         welcomeMsg.className = 'message bot';
         welcomeMsg.innerHTML = `
-          <div style="margin-bottom: 12px;">
-            Hi! I can help you understand this repository. Here are some questions you might ask:
+          <div style="display:flex;align-items:center;gap:7px;margin-bottom:10px;">
+            <span class="material-icons" style="font-size:17px;color:var(--tab-active-color);">auto_awesome</span>
+            <span style="font-size:13px;font-weight:600;">Hi! Ask me anything about this repo:</span>
           </div>
         `;
         chatMessages.appendChild(welcomeMsg);
-        
-        const suggestionsDiv = document.createElement('div');
-        suggestionsDiv.style.cssText = 'padding: 8px 0; display: flex; flex-direction: column; gap: 6px;';
-        
-        suggestions.forEach(q => {
-          const btn = document.createElement('button');
-          btn.textContent = q;
-          btn.style.cssText = `
-            background: var(--summary-bg);
-            border: 1px solid var(--modal-border);
-            color: var(--modal-title);
-            padding: 10px 14px;
-            border-radius: 8px;
-            font-size: 13px;
-            cursor: pointer;
-            transition: all 0.2s;
-            text-align: left;
-            width: 100%;
+
+        if (!document.getElementById('suggest-anim-style')) {
+          const s = document.createElement('style');
+          s.id = 'suggest-anim-style';
+          s.textContent = `
+            .suggest-chip {
+              display:flex;align-items:center;gap:9px;width:100%;
+              padding:9px 13px;border-radius:10px;border:none;
+              background:rgba(255,255,255,0.55);
+              border-left:3px solid var(--tab-active-color);
+              color:var(--popup-text);font-size:0.84rem;font-weight:500;
+              text-align:left;cursor:pointer;
+              box-shadow:0 1px 6px rgba(99,102,241,0.08);
+              transition:background 0.18s,transform 0.15s,box-shadow 0.18s;
+              animation:chipIn 0.35s ease both;
+              backdrop-filter:blur(8px);
+            }
+            .suggest-chip::after{display:none;}
+            body.dark-theme .suggest-chip{background:rgba(15,14,35,0.55);color:#e2e8f0;}
+            .suggest-chip:hover{background:rgba(255,255,255,0.82);transform:translateX(3px);box-shadow:0 3px 12px rgba(99,102,241,0.15);}
+            body.dark-theme .suggest-chip:hover{background:rgba(30,28,60,0.75);}
+            .suggest-icon{font-size:16px!important;line-height:1!important;color:var(--tab-active-color);flex-shrink:0;}
+            .suggest-text{flex:1;}
+            .suggest-arrow{font-size:15px!important;line-height:1!important;color:var(--tab-active-color);opacity:0.6;flex-shrink:0;transition:transform 0.15s;}
+            .suggest-chip:hover .suggest-arrow{transform:translateX(3px);opacity:1;}
+            @keyframes chipIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
           `;
-          btn.onmouseover = () => {
-            btn.style.background = 'var(--tab-active-color)';
-            btn.style.color = 'white';
-            btn.style.borderColor = 'var(--tab-active-color)';
-            btn.style.transform = 'translateX(4px)';
-          };
-          btn.onmouseout = () => {
-            btn.style.background = 'var(--summary-bg)';
-            btn.style.color = 'var(--modal-title)';
-            btn.style.borderColor = 'var(--modal-border)';
-            btn.style.transform = 'translateX(0)';
-          };
+          document.head.appendChild(s);
+        }
+
+        const suggestionsDiv = document.createElement('div');
+        suggestionsDiv.style.cssText = 'padding: 4px 0; display: flex; flex-direction: column; gap: 7px;';
+
+        suggestions.forEach(({ icon, text }, i) => {
+          const btn = document.createElement('button');
+          btn.className = 'suggest-chip';
+          btn.style.animationDelay = `${i * 70}ms`;
+          btn.innerHTML = `
+            <span class="material-icons suggest-icon">${icon}</span>
+            <span class="suggest-text">${text}</span>
+            <span class="material-icons suggest-arrow">chevron_right</span>
+          `;
           btn.onclick = () => {
-            chatInput.value = q;
-            handleQuestion(q);
+            chatInput.value = text;
+            handleQuestion(text);
             suggestionsDiv.remove();
             welcomeMsg.remove();
           };
           suggestionsDiv.appendChild(btn);
         });
-        
+
         chatMessages.appendChild(suggestionsDiv);
         chatMessages.scrollTop = chatMessages.scrollHeight;
       };

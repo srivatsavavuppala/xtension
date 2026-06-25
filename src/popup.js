@@ -847,21 +847,39 @@ function createChatOverlay() {
           }
         });
 
+        const sendToContentScript = (tabId, action, onSuccess, onFail) => {
+          chrome.tabs.sendMessage(tabId, { action }, (resp) => {
+            if (chrome.runtime.lastError || (resp && resp.error)) {
+              // Content script not injected yet — inject and retry once
+              chrome.scripting.executeScript(
+                { target: { tabId }, files: ['src/content.js'] },
+                () => {
+                  if (chrome.runtime.lastError) { onFail && onFail(); return; }
+                  chrome.tabs.sendMessage(tabId, { action }, (resp2) => {
+                    if (chrome.runtime.lastError || (resp2 && resp2.error)) { onFail && onFail(); return; }
+                    onSuccess && onSuccess();
+                  });
+                }
+              );
+              return;
+            }
+            onSuccess && onSuccess();
+          });
+        };
+
         chatMic.onclick = () => {
           chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
             if (!tabs[0]) return;
+            const tabId = tabs[0].id;
             if (listening) {
-              chrome.tabs.sendMessage(tabs[0].id, { action: 'stopSpeech' });
-              setMicActive(false);
+              sendToContentScript(tabId, 'stopSpeech', () => setMicActive(false), () => setMicActive(false));
               return;
             }
-            chrome.tabs.sendMessage(tabs[0].id, { action: 'startSpeech' }, (resp) => {
-              if (chrome.runtime.lastError || (resp && resp.error)) {
-                chatMic.style.display = 'none';
-                return;
-              }
-              setMicActive(true);
-            });
+            sendToContentScript(
+              tabId, 'startSpeech',
+              () => setMicActive(true),
+              () => { chatMic.style.display = 'none'; }
+            );
           });
         };
       }

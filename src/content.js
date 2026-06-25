@@ -1,3 +1,9 @@
+// Guard against double-injection when scripting API re-injects this file
+if (window.__xtensionLoaded) {
+  // Already running — skip re-registering listeners
+} else {
+window.__xtensionLoaded = true;
+
 // Speech recognition handler — runs in the tab so it doesn't close the popup
 let activeRecognition = null;
 
@@ -87,3 +93,5 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 });
+
+} // end __xtensionLoaded guard

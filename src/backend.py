@@ -156,12 +156,17 @@ def ensure_collections():
                     collection_name=coll,
                     vectors_config=VectorParams(size=EMBEDDING_DIM, distance=Distance.COSINE),
                 )
-                # Payload index on repo_id makes filtered searches fast
-                client.create_payload_index(
-                    collection_name=coll,
-                    field_name="repo_id",
-                    field_schema=PayloadSchemaType.KEYWORD,
-                )
+            # Always ensure indexes — idempotent, safe to call even if they exist.
+            # Qdrant Cloud requires indexes on every field used in a filter.
+            for field in ["repo_id", "file_path"]:
+                try:
+                    client.create_payload_index(
+                        collection_name=coll,
+                        field_name=field,
+                        field_schema=PayloadSchemaType.KEYWORD,
+                    )
+                except Exception:
+                    pass  # already exists
         _collections_ready = True
     except HTTPException:
         raise

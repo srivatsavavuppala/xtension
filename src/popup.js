@@ -293,13 +293,7 @@ function showInteractiveButtons() {
     downloadBtn.style.opacity = '1';
     downloadBtn.style.transform = 'translateY(0)';
   }
-  if (chatIcon) {
-    chatIcon.style.display = 'flex';
-    chatIcon.style.flex = '0 0 46px';
-    chatIcon.style.borderRadius = '12px';
-    chatIcon.style.gap = '';
-    chatIcon.innerHTML = '<img src="../icons/chat.png" alt="Chat" style="width:24px;height:24px;filter:brightness(0) invert(1);pointer-events:none;">';
-  }
+  if (chatIcon) chatIcon.style.display = 'flex';
 }
 
 function hideInteractiveButtons() {
@@ -1554,15 +1548,9 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
       showGitHubError();
       summarizeBtn.disabled = true;
     } else {
-      // Show chat as full-width button before any analysis
+      // Show chat icon only — positioned right, same as when paired with download
       const chatIcon = document.getElementById('chat-icon');
-      if (chatIcon) {
-        chatIcon.style.display = 'flex';
-        chatIcon.style.flex = '1';
-        chatIcon.style.borderRadius = '13px';
-        chatIcon.style.gap = '8px';
-        chatIcon.innerHTML = '<img src="../icons/chat.png" alt="Chat" style="width:22px;height:22px;filter:brightness(0) invert(1);"><span style="font-size:0.9rem;font-weight:600;color:#fff;">Chat with this Repo</span>';
-      }
+      if (chatIcon) chatIcon.style.display = 'flex';
     }
   });
 

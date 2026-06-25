@@ -289,7 +289,8 @@ function showInteractiveButtons() {
   const downloadBtn = document.getElementById('downloadBtn');
   const chatIcon = document.getElementById('chat-icon');
   if (downloadBtn) {
-    downloadBtn.style.display = 'flex';
+    downloadBtn.style.visibility = 'visible';
+    downloadBtn.style.pointerEvents = 'auto';
     downloadBtn.style.opacity = '1';
     downloadBtn.style.transform = 'translateY(0)';
   }
@@ -299,7 +300,7 @@ function showInteractiveButtons() {
 function hideInteractiveButtons() {
   const downloadBtn = document.getElementById('downloadBtn');
   const chatIcon = document.getElementById('chat-icon');
-  if (downloadBtn) downloadBtn.style.display = 'none'; 
+  if (downloadBtn) { downloadBtn.style.visibility = 'hidden'; downloadBtn.style.pointerEvents = 'none'; }
   if (chatIcon) chatIcon.style.display = 'none';
 }
 
@@ -682,19 +683,7 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   // Function to show interactive buttons after analysis
-  function showInteractiveButtons() {
-    if (downloadBtn) {
-      downloadBtn.style.display = 'block';
-    }
-    if (chatIcon) {
-      chatIcon.style.display = 'block';
-    }
-  }
-  function hideInteractiveButtons() {
-  if (downloadBtn) downloadBtn.style.display = 'none'; 
-  if (chatIcon) chatIcon.style.display = 'none';
-}
-hideInteractiveButtons();
+  hideInteractiveButtons();
 
 // Chat history functions
 function getChatHistoryKey(owner, repo) {
@@ -2019,11 +2008,8 @@ document.head.appendChild(enhancedCitationStyles);
       projectPaper = result.summaryResult.project_paper;
       showInteractiveButtons();
       if (downloadBtn) {
-        downloadBtn.style.display = 'block';
-        downloadBtn.style.background = '#10b981';
-        downloadBtn.style.color = 'white';
-        downloadBtn.style.border = 'none';
-        downloadBtn.style.boxShadow = 'none';
+        downloadBtn.style.visibility = 'visible';
+        downloadBtn.style.pointerEvents = 'auto';
         downloadBtn.style.opacity = '1';
         downloadBtn.style.transform = 'translateY(0)';
       }
@@ -2040,8 +2026,8 @@ document.head.appendChild(enhancedCitationStyles);
       createChatOverlay();
     }
   } else {
-    // No analysis yet — hide download but keep chat icon visible on GitHub pages
-    if (downloadBtn) downloadBtn.style.display = 'none';
+    // No analysis yet — download is invisible but holds its space; chat icon shown by tab check
+    if (downloadBtn) { downloadBtn.style.visibility = 'hidden'; downloadBtn.style.pointerEvents = 'none'; }
   }
 });
 
@@ -2749,7 +2735,8 @@ function createFavoriteHistoryItem(item) {
         buttonText.style.opacity = '0';
       }
       if (downloadBtn) {
-        downloadBtn.style.display = 'none';
+        downloadBtn.style.visibility = 'hidden';
+        downloadBtn.style.pointerEvents = 'none';
       }
     } else {
       summarizeBtn.disabled = false;

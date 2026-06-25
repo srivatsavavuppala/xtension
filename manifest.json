@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "GitHub Repo Summarizer",
   "version": "1.7",
-  "description": "v1.7: Voice input in chat, three-dot menu with History & Clear Session, aurora glassmorphism UI, light/dark theme-aware buttons, suggestion chips, and scrollbar-free panels.",
+  "description": "AI-powered GitHub repo summarizer with RAG chat, voice input, aurora UI, light/dark themes, repo history, and instant analysis.",
   "permissions": ["scripting", "activeTab", "storage", "tabs"],
   "host_permissions": ["https://github.com/*"],
   "background": {

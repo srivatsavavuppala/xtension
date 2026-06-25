@@ -1547,6 +1547,10 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
     if (!currentUrl.includes('github.com')) {
       showGitHubError();
       summarizeBtn.disabled = true;
+    } else {
+      // Show chat icon immediately — chat works without prior analysis
+      const chatIcon = document.getElementById('chat-icon');
+      if (chatIcon) chatIcon.style.display = 'flex';
     }
   });
 
@@ -2036,7 +2040,8 @@ document.head.appendChild(enhancedCitationStyles);
       createChatOverlay();
     }
   } else {
-    hideInteractiveButtons();
+    // No analysis yet — hide download but keep chat icon visible on GitHub pages
+    if (downloadBtn) downloadBtn.style.display = 'none';
   }
 });
 

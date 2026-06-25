@@ -520,10 +520,10 @@ def query_repo(req: QueryRequest):
         file_paths = [r.payload["file_path"] for r in file_results.points if r.payload.get("file_path")]
 
         if not file_paths:
-            # No index yet — answer immediately from README so the user isn't kept waiting.
+            # No index yet — answer immediately from context so the user isn't kept waiting.
             # Background indexing (started by the extension) will make future queries use RAG.
-            print(f"[Query] No index for {repo_id}, answering from README")
-            return _answer_from_readme(req.owner, req.repo, req.question)
+            print(f"[Query] No index for {repo_id}, answering from file tree + README")
+            return _answer_from_context(req.owner, req.repo, req.question)
 
         # Stage 2: find relevant chunks within those files
         per_file = max(1, req.top_chunks // len(file_paths))
@@ -589,22 +589,94 @@ def query_repo(req: QueryRequest):
         raise HTTPException(500, f"Internal server error: {e}")
 
 
-def _answer_from_readme(owner: str, repo: str, question: str) -> QueryResponse:
-    """Fast answer (~2-3s) using only README. Used on first query before indexing completes."""
-    readme = ""
+def _answer_from_context(owner: str, repo: str, question: str) -> QueryResponse:
+    """Fast answer (~2-4s) using README + file tree + key config files.
+    Used before indexing completes — works even when there is no README.
+    """
+    context_parts: List[str] = []
+
+    # 1. README (optional — many repos don't have one)
     try:
         r = http_requests.get(
             f"https://api.github.com/repos/{owner}/{repo}/readme",
             headers={"Accept": "application/vnd.github.v3.raw"},
             timeout=8,
         )
-        if r.ok:
-            readme = r.text[:4000]
+        if r.ok and r.text.strip():
+            context_parts.append(f"README:\n{r.text[:3000]}")
     except Exception:
         pass
 
-    context = f"README for {owner}/{repo}:\n\n{readme}" if readme else f"Repository: {owner}/{repo} (no README found)"
-    answer = _call_llm(question, context)
+    # 2. File tree — always available, gives language + structure signal
+    try:
+        headers = {"Accept": "application/vnd.github.v3+json"}
+        if GITHUB_TOKEN:
+            headers["Authorization"] = f"token {GITHUB_TOKEN}"
+        branch = get_default_branch(owner, repo)
+        tree_r = http_requests.get(
+            f"https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1",
+            headers=headers, timeout=10,
+        )
+        if tree_r.ok:
+            items = [i["path"] for i in tree_r.json().get("tree", []) if i.get("type") == "blob"]
+
+            # Detect dominant languages from file extensions
+            ext_to_lang = {
+                ".py": "Python", ".js": "JavaScript", ".ts": "TypeScript",
+                ".tsx": "TypeScript/React", ".jsx": "JavaScript/React",
+                ".java": "Java", ".go": "Go", ".rs": "Rust",
+                ".cpp": "C++", ".cc": "C++", ".c": "C", ".cs": "C#",
+                ".rb": "Ruby", ".php": "PHP", ".swift": "Swift",
+                ".kt": "Kotlin", ".scala": "Scala", ".r": "R",
+                ".sh": "Shell", ".html": "HTML", ".css": "CSS",
+            }
+            skip_exts = {".md", ".txt", ".json", ".yaml", ".yml", ".toml",
+                         ".lock", ".sum", ".mod", ".gitignore", ".env"}
+            ext_counts: Dict[str, int] = {}
+            for path in items:
+                _, ext = os.path.splitext(path.lower())
+                if ext and ext not in skip_exts:
+                    ext_counts[ext] = ext_counts.get(ext, 0) + 1
+
+            top = sorted(ext_counts.items(), key=lambda x: -x[1])[:6]
+            langs = [ext_to_lang.get(e, e.lstrip(".").upper()) for e, _ in top if e in ext_to_lang]
+
+            context_parts.append(
+                f"Repository: {owner}/{repo}\n"
+                f"Total files: {len(items)}\n"
+                f"Languages: {', '.join(langs) if langs else 'not detected'}\n"
+                f"File tree (first 60):\n" + "\n".join(items[:60])
+            )
+
+            # 3. Fetch 1-2 small config files for framework/dependency info
+            config_priority = [
+                "package.json", "requirements.txt", "pyproject.toml",
+                "go.mod", "Cargo.toml", "pom.xml", "build.gradle",
+                "Gemfile", "composer.json", "setup.py",
+            ]
+            fetched = 0
+            for cfg in config_priority:
+                if fetched >= 2:
+                    break
+                matches = [p for p in items if os.path.basename(p) == cfg and p.count("/") <= 1]
+                if matches:
+                    try:
+                        cr = http_requests.get(
+                            f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{matches[0]}",
+                            timeout=6,
+                        )
+                        if cr.ok and len(cr.text) < 8000:
+                            context_parts.append(f"{matches[0]}:\n{cr.text[:2000]}")
+                            fetched += 1
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+    if not context_parts:
+        context_parts.append(f"Repository: {owner}/{repo} — no additional information could be retrieved.")
+
+    answer = _call_llm(question, "\n\n---\n\n".join(context_parts))
     return QueryResponse(answer=answer, references=[])
 
 

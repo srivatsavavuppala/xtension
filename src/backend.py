@@ -254,11 +254,38 @@ def list_repo_files(owner: str, repo: str, branch: str) -> List[str]:
         if not r.ok:
             raise HTTPException(502, f"Failed to fetch repo tree: {r.status_code}")
     data = r.json()
-    return [
+    files = [
         item["path"]
         for item in data.get("tree", [])
         if item.get("type") == "blob" and _is_supported_text_file(item["path"])
     ]
+    return _prioritize_files(files)
+
+
+def _prioritize_files(files: List[str], max_files: int = 50) -> List[str]:
+    """Return the most important files first, capped at max_files.
+
+    Prioritises root-level entry points and config files so small repos get
+    fully indexed while large repos (langchain, etc.) stay fast.
+    """
+    def score(path: str) -> int:
+        name = os.path.basename(path).lower()
+        depth = path.count("/")
+        if name in {"readme.md", "readme", "readme.txt", "readme.rst"}:
+            return 0
+        if name in {"package.json", "requirements.txt", "pyproject.toml",
+                    "cargo.toml", "go.mod", "setup.py", "setup.cfg"}:
+            return 1
+        if name in {"main.py", "app.py", "index.js", "main.js",
+                    "index.ts", "main.ts", "server.py", "server.js"}:
+            return 2
+        if depth == 0:
+            return 3
+        if depth == 1:
+            return 4
+        return 5 + depth
+
+    return sorted(files, key=score)[:max_files]
 
 
 def _is_supported_text_file(path: str) -> bool:
@@ -493,29 +520,10 @@ def query_repo(req: QueryRequest):
         file_paths = [r.payload["file_path"] for r in file_results.points if r.payload.get("file_path")]
 
         if not file_paths:
-            # Synchronous fallback: index on first query if not done via /build_embeddings
-            print(f"[Query] No index for {repo_id}, indexing now...")
-            try:
-                _indexing_jobs[repo_id] = {"status": "indexing", "message": "Starting...", "started_at": time.time()}
-                _do_build_embeddings(req.owner, req.repo, branch, repo_id)
-                file_results = client.query_points(
-                    collection_name=FILES_COLLECTION,
-                    query=query_emb,
-                    query_filter=Filter(
-                        must=[FieldCondition(key="repo_id", match=MatchValue(value=repo_id))]
-                    ),
-                    limit=req.top_files,
-                    with_payload=True,
-                )
-                file_paths = [r.payload["file_path"] for r in file_results.points if r.payload.get("file_path")]
-            except Exception as idx_err:
-                print(f"[Query] Auto-index failed: {idx_err}")
-
-            if not file_paths:
-                return QueryResponse(
-                    answer="This repository hasn't been indexed yet. Please click 'Analyze Repository' first.",
-                    references=[],
-                )
+            # No index yet — answer immediately from README so the user isn't kept waiting.
+            # Background indexing (started by the extension) will make future queries use RAG.
+            print(f"[Query] No index for {repo_id}, answering from README")
+            return _answer_from_readme(req.owner, req.repo, req.question)
 
         # Stage 2: find relevant chunks within those files
         per_file = max(1, req.top_chunks // len(file_paths))
@@ -579,6 +587,26 @@ def query_repo(req: QueryRequest):
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(500, f"Internal server error: {e}")
+
+
+def _answer_from_readme(owner: str, repo: str, question: str) -> QueryResponse:
+    """Fast answer (~2-3s) using only README. Used on first query before indexing completes."""
+    readme = ""
+    try:
+        r = http_requests.get(
+            f"https://api.github.com/repos/{owner}/{repo}/readme",
+            headers={"Accept": "application/vnd.github.v3.raw"},
+            timeout=8,
+        )
+        if r.ok:
+            readme = r.text[:4000]
+    except Exception:
+        pass
+
+    context = f"README for {owner}/{repo}:\n\n{readme}" if readme else f"Repository: {owner}/{repo} (no README found)"
+    note = "\n\n*(Answering from README — full code search will be available after indexing completes.)*"
+    answer = _call_llm(question, context) + note
+    return QueryResponse(answer=answer, references=[])
 
 
 def _call_llm(question: str, context: str) -> str:

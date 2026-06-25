@@ -1045,7 +1045,7 @@ function createChatOverlay() {
             if (response) {
               const { owner, repo } = response;
               try {
-                await buildEmbeddings(owner, repo);
+                buildEmbeddings(owner, repo); // fire-and-forget — index in background
                 const result = await queryRepo(owner, repo, question);
                 removeLoader(typingDiv);
                 addMessage(result.answer, false);

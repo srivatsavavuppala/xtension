@@ -72,7 +72,7 @@ app.add_middleware(
 app.add_middleware(CustomCORSMiddleware)
 
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 def read_root():
     return {"message": "GitHub Repo Summarizer RAG API", "version": "2.0"}
 
@@ -476,15 +476,16 @@ def query_repo(req: QueryRequest):
         client = get_qdrant_client()
 
         # Stage 1: find relevant files
-        file_results = client.search(
+        file_results = client.query_points(
             collection_name=FILES_COLLECTION,
-            query_vector=query_emb,
+            query=query_emb,
             query_filter=Filter(
                 must=[FieldCondition(key="repo_id", match=MatchValue(value=repo_id))]
             ),
             limit=req.top_files,
+            with_payload=True,
         )
-        file_paths = [r.payload["file_path"] for r in file_results if r.payload.get("file_path")]
+        file_paths = [r.payload["file_path"] for r in file_results.points if r.payload.get("file_path")]
 
         if not file_paths:
             # Synchronous fallback: index on first query if not done via /build_embeddings
@@ -492,15 +493,16 @@ def query_repo(req: QueryRequest):
             try:
                 _indexing_jobs[repo_id] = {"status": "indexing", "message": "Starting...", "started_at": time.time()}
                 _do_build_embeddings(req.owner, req.repo, branch, repo_id)
-                file_results = client.search(
+                file_results = client.query_points(
                     collection_name=FILES_COLLECTION,
-                    query_vector=query_emb,
+                    query=query_emb,
                     query_filter=Filter(
                         must=[FieldCondition(key="repo_id", match=MatchValue(value=repo_id))]
                     ),
                     limit=req.top_files,
+                    with_payload=True,
                 )
-                file_paths = [r.payload["file_path"] for r in file_results if r.payload.get("file_path")]
+                file_paths = [r.payload["file_path"] for r in file_results.points if r.payload.get("file_path")]
             except Exception as idx_err:
                 print(f"[Query] Auto-index failed: {idx_err}")
 
@@ -514,9 +516,9 @@ def query_repo(req: QueryRequest):
         per_file = max(1, req.top_chunks // len(file_paths))
         chunk_hits: List[Dict[str, Any]] = []
         for path in file_paths:
-            results = client.search(
+            results = client.query_points(
                 collection_name=CHUNKS_COLLECTION,
-                query_vector=query_emb,
+                query=query_emb,
                 query_filter=Filter(
                     must=[
                         FieldCondition(key="repo_id", match=MatchValue(value=repo_id)),
@@ -524,8 +526,9 @@ def query_repo(req: QueryRequest):
                     ]
                 ),
                 limit=per_file,
+                with_payload=True,
             )
-            for r in results:
+            for r in results.points:
                 chunk_hits.append({
                     "doc": r.payload.get("text", ""),
                     "meta": r.payload,
@@ -686,22 +689,23 @@ def _query_for_summary(owner: str, repo: str, branch: str, question: str, top_ch
         ensure_collections()
         client = get_qdrant_client()
 
-        file_results = client.search(
+        file_results = client.query_points(
             collection_name=FILES_COLLECTION,
-            query_vector=query_emb,
+            query=query_emb,
             query_filter=Filter(
                 must=[FieldCondition(key="repo_id", match=MatchValue(value=repo_id))]
             ),
             limit=10,
+            with_payload=True,
         )
-        file_paths = [r.payload["file_path"] for r in file_results if r.payload.get("file_path")]
+        file_paths = [r.payload["file_path"] for r in file_results.points if r.payload.get("file_path")]
 
         per_file = max(1, top_chunks // max(1, len(file_paths)))
         chunks = []
         for path in file_paths:
-            results = client.search(
+            results = client.query_points(
                 collection_name=CHUNKS_COLLECTION,
-                query_vector=query_emb,
+                query=query_emb,
                 query_filter=Filter(
                     must=[
                         FieldCondition(key="repo_id", match=MatchValue(value=repo_id)),
@@ -709,8 +713,9 @@ def _query_for_summary(owner: str, repo: str, branch: str, question: str, top_ch
                     ]
                 ),
                 limit=per_file,
+                with_payload=True,
             )
-            for r in results:
+            for r in results.points:
                 m = r.payload
                 chunks.append(
                     f"{m.get('file_path')}:{m.get('start_line')}-{m.get('end_line')}\n{m.get('text', '')}"

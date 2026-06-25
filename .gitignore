@@ -2,3 +2,6 @@
 __pycache__/
 *.pyc
 .rag_store/
+venv/
+.venv/
+.venv

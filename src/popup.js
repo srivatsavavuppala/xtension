@@ -1045,10 +1045,11 @@ function createChatOverlay() {
             if (response) {
               const { owner, repo } = response;
               try {
+                await buildEmbeddings(owner, repo);
                 const result = await queryRepo(owner, repo, question);
                 removeLoader(typingDiv);
                 addMessage(result.answer, false);
-                
+
                 // Add references if available
                 if (result.references && result.references.length > 0) {
                   addReferences(result.references);
@@ -1404,34 +1405,73 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
         const builtInfo = result[storageKey];
         const staleAfterMs = 7 * 24 * 60 * 60 * 1000;
         const isFresh = builtInfo && (Date.now() - builtInfo.timestamp < staleAfterMs);
-        if (isFresh) {
-          resolve({ skipped: true });
-          return;
+        if (isFresh) { resolve({ skipped: true }); return; }
+
+        const done = (val) => {
+          if (askBtn) askBtn.disabled = false;
+          resolve(val);
+        };
+
+        if (askBtn) askBtn.disabled = true;
+        if (askResult) {
+          askResult.innerHTML = '<div style="font-size: 13px; color: var(--empty-desc);">Starting repository indexing…</div>';
         }
+
         try {
-          if (askBtn) askBtn.disabled = true;
-          if (askResult) {
-            askResult.innerHTML = '<div style="font-size: 13px; color: var(--empty-desc);">Indexing repo for semantic search…</div>';
-          }
           const res = await fetch(`${RAG_API_BASE}/build_embeddings`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ owner, repo })
           });
           const data = await res.json();
-          if (!res.ok) throw new Error(data.detail || 'Failed to build embeddings');
-          chrome.storage.local.set({ [storageKey]: { timestamp: Date.now(), stats: data } });
-          if (askResult) {
-            askResult.innerHTML = `<div style="font-size: 13px; color: var(--empty-desc);">Indexed ${data.num_files_indexed} files and ${data.num_chunks_indexed} chunks in ${data.took_seconds}s.</div>`;
+          if (!res.ok) throw new Error(data.detail || 'Failed to start indexing');
+
+          if (data.status === 'skipped') {
+            chrome.storage.local.set({ [storageKey]: { timestamp: Date.now(), stats: data } });
+            done({ skipped: true, data });
+            return;
           }
-          resolve({ skipped: false, data });
+
+          // Poll /index_status until the background task finishes
+          let attempts = 0;
+          const pollFn = async () => {
+            try {
+              const statusRes = await fetch(
+                `${RAG_API_BASE}/index_status/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`
+              );
+              const statusData = await statusRes.json();
+
+              if (askResult) {
+                askResult.innerHTML = `<div style="font-size: 13px; color: var(--empty-desc);">Indexing: ${statusData.message || '...'}</div>`;
+              }
+
+              if (statusData.status === 'done') {
+                chrome.storage.local.set({ [storageKey]: { timestamp: Date.now(), stats: statusData } });
+                if (askResult) {
+                  askResult.innerHTML = `<div style="font-size: 13px; color: var(--empty-desc);">Indexed ${statusData.num_files || ''} files successfully.</div>`;
+                }
+                done({ skipped: false, data: statusData });
+              } else if (statusData.status === 'error') {
+                throw new Error(statusData.message || 'Indexing failed on server');
+              } else if (++attempts < 60) {
+                setTimeout(pollFn, 5000);
+              } else {
+                throw new Error('Indexing timed out after 5 minutes');
+              }
+            } catch (pollErr) {
+              if (askResult) {
+                askResult.innerHTML = `<div style="font-size: 13px; color: #dc2626;">Indexing error: ${pollErr.message}. You can still try asking.</div>`;
+              }
+              done({ error: pollErr });
+            }
+          };
+          setTimeout(pollFn, 3000);
+
         } catch (e) {
           if (askResult) {
-            askResult.innerHTML = `<div style=\"font-size: 13px; color: #dc2626;\">Indexing failed: ${e.message}. You can still try asking.</div>`;
+            askResult.innerHTML = `<div style="font-size: 13px; color: #dc2626;">Indexing failed: ${e.message}. You can still try asking.</div>`;
           }
-          resolve({ error: e });
-        } finally {
-          if (askBtn) askBtn.disabled = false;
+          done({ error: e });
         }
       });
     });

@@ -2665,10 +2665,6 @@ function createFavoriteHistoryItem(item) {
     });
   };
 
-  if (historyIcon) {
-    historyIcon.addEventListener('click', showHistoryOverlay);
-  }
-
   function setLoadingState(loading) {
     const buttonText = summarizeBtn.querySelector('.button-text');
     if (loading) {

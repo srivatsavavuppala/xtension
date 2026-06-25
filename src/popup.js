@@ -1399,12 +1399,73 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
     historyIcon.style.boxShadow = 'none';
   };
   
-  historyIcon.onclick = function() {
-    historyIcon.style.transform = 'scale(0.95)';
-    setTimeout(() => {
-      historyIcon.style.transform = 'scale(1)';
-      showHistoryOverlay();
-    }, 150);
+  historyIcon.onclick = function(e) {
+    e.stopPropagation();
+    const existing = document.getElementById('three-dot-menu');
+    if (existing) { existing.remove(); return; }
+
+    const menu = document.createElement('div');
+    menu.id = 'three-dot-menu';
+    const isDark = document.body.classList.contains('dark-theme');
+    menu.style.cssText = `
+      position: absolute;
+      top: 46px;
+      right: 10px;
+      z-index: 99999;
+      background: ${isDark ? '#1e1c3c' : '#fff'};
+      border: 1px solid ${isDark ? 'rgba(99,102,241,0.25)' : '#e2e8f0'};
+      border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+      overflow: hidden;
+      min-width: 160px;
+      animation: chipIn 0.18s ease both;
+    `;
+
+    const items = [
+      { icon: 'history',       label: 'History',       action: () => { menu.remove(); showHistoryOverlay(); } },
+      { icon: 'delete_sweep',  label: 'Clear Session',  action: () => {
+          menu.remove();
+          chrome.storage.local.remove(['summaryStatus', 'summaryResult', 'summaryTab', 'chatOverlayOpen'], () => {
+            showMessage('Session cleared. You can generate a new summary now.', 'info');
+            hideInteractiveButtons();
+            hideAskPanel();
+            closeChatOverlay();
+          });
+        }
+      }
+    ];
+
+    items.forEach((item, i) => {
+      const row = document.createElement('button');
+      row.style.cssText = `
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        width: 100%;
+        padding: 10px 14px;
+        border: none;
+        background: transparent;
+        color: ${item.icon === 'delete_sweep' ? '#ef4444' : (isDark ? '#e2e8f0' : '#23272e')};
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        text-align: left;
+        border-top: ${i > 0 ? '1px solid ' + (isDark ? 'rgba(99,102,241,0.15)' : '#f1f5f9') : 'none'};
+        transition: background 0.15s;
+      `;
+      row.innerHTML = `<span class="material-icons" style="font-size:16px;">${item.icon}</span>${item.label}`;
+      row.onmouseover = () => { row.style.background = isDark ? 'rgba(99,102,241,0.12)' : '#f8faff'; };
+      row.onmouseout  = () => { row.style.background = 'transparent'; };
+      row.onclick = item.action;
+      menu.appendChild(row);
+    });
+
+    document.getElementById('main').appendChild(menu);
+
+    const dismiss = (ev) => {
+      if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener('click', dismiss); }
+    };
+    setTimeout(() => document.addEventListener('click', dismiss), 0);
   };
 }
   let projectPaper = '';

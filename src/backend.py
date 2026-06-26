@@ -356,19 +356,29 @@ def chunk_code(
 # ─── Index check ───────────────────────────────────────────────────────────
 
 def check_if_indexed(owner: str, repo: str, branch: Optional[str] = None) -> bool:
+    """Returns True only when BOTH files and chunks exist — partial indexes trigger re-indexing."""
     try:
         branch = branch or get_default_branch(owner, repo)
         repo_id = get_repo_id(owner, repo, branch)
         ensure_collections()
         client = get_qdrant_client()
-        results, _ = client.scroll(
+        files, _ = client.scroll(
             collection_name=FILES_COLLECTION,
             scroll_filter=Filter(
                 must=[FieldCondition(key="repo_id", match=MatchValue(value=repo_id))]
             ),
             limit=1,
         )
-        return len(results) > 0
+        if not files:
+            return False
+        chunks, _ = client.scroll(
+            collection_name=CHUNKS_COLLECTION,
+            scroll_filter=Filter(
+                must=[FieldCondition(key="repo_id", match=MatchValue(value=repo_id))]
+            ),
+            limit=1,
+        )
+        return len(chunks) > 0
     except Exception:
         return False
 
@@ -552,7 +562,8 @@ def query_repo(req: QueryRequest):
         top_chunks = chunk_hits[: req.top_chunks]
 
         if not top_chunks:
-            return QueryResponse(answer="No relevant code found for your question.", references=[])
+            print(f"[Query] Files indexed but no chunks for {repo_id}, falling back to context")
+            return _answer_from_context(req.owner, req.repo, req.question)
 
         context = "\n\n".join(
             f"[{i+1}] {item['meta']['file_path']}:{item['meta']['start_line']}-{item['meta']['end_line']}\n{item['doc']}"

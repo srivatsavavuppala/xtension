@@ -1502,14 +1502,17 @@ chrome.storage.local.get({ theme: 'light' }, (result) => {
       { icon: 'history',       label: 'History',       action: () => { menu.remove(); showHistoryOverlay(); } },
       { icon: 'delete_sweep',  label: 'Clear Session',  action: () => {
           menu.remove();
-          chrome.storage.local.remove(['summaryStatus', 'summaryResult', 'summaryTab', 'chatOverlayOpen'], () => {
-            showMessage('Session cleared', 'info');
-            hideInteractiveButtons();
-            hideAskPanel();
-            closeChatOverlay();
-            // Keep chat icon visible — chat works without analysis
-            const ci = document.getElementById('chat-icon');
-            if (ci) ci.style.display = 'flex';
+          chrome.storage.local.get(null, (all) => {
+            const ragKeys = Object.keys(all).filter(k => k.startsWith('ragBuilt:'));
+            const toRemove = ['summaryStatus', 'summaryResult', 'summaryTab', 'chatOverlayOpen', ...ragKeys];
+            chrome.storage.local.remove(toRemove, () => {
+              showMessage('Session cleared', 'info');
+              hideInteractiveButtons();
+              hideAskPanel();
+              closeChatOverlay();
+              const ci = document.getElementById('chat-icon');
+              if (ci) ci.style.display = 'flex';
+            });
           });
         }
       }

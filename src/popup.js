@@ -2577,7 +2577,19 @@ modal.appendChild(header);
   downloadBtn.style.cssText = 'background: #10b981; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer;';
   downloadBtn.onclick = (e) => {
     e.stopPropagation();
-    window.downloadReport(item.url);
+    const content = item.projectPaper || item.summary;
+    if (!content) { return; }
+    const blob = new Blob([content], { type: 'text/plain' });
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = `${item.repo || 'repo'}_report.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+    downloadBtn.textContent = '✅ Downloaded!';
+    setTimeout(() => { downloadBtn.textContent = '📄 Download Report'; }, 2000);
   };
   btnRow.appendChild(downloadBtn);
 

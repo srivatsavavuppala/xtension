@@ -946,7 +946,7 @@ function createChatOverlay() {
             <span class="material-icons suggest-arrow">chevron_right</span>
           `;
           btn.onclick = () => {
-            chatInput.value = text;
+            chatInput.value = '';
             handleQuestion(text);
             suggestionsDiv.remove();
             welcomeMsg.remove();

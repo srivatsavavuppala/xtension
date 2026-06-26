@@ -603,10 +603,18 @@ def query_repo(req: QueryRequest):
 def _answer_from_context(owner: str, repo: str, question: str) -> QueryResponse:
     """Fast answer (~2-4s) using README + file tree + key config files.
     Used before indexing completes — works even when there is no README.
+    Returns real Reference objects so citation badges are clickable.
     """
-    context_parts: List[str] = []
+    numbered_parts: List[str] = []   # context blocks labelled [1], [2], ...
+    refs: List[Reference] = []        # matching Reference for each block
 
-    # 1. README (optional — many repos don't have one)
+    branch = "main"
+    try:
+        branch = get_default_branch(owner, repo)
+    except Exception:
+        pass
+
+    # [1] README (optional)
     try:
         r = http_requests.get(
             f"https://api.github.com/repos/{owner}/{repo}/readme",
@@ -614,16 +622,23 @@ def _answer_from_context(owner: str, repo: str, question: str) -> QueryResponse:
             timeout=8,
         )
         if r.ok and r.text.strip():
-            context_parts.append(f"README:\n{r.text[:3000]}")
+            idx = len(numbered_parts) + 1
+            numbered_parts.append(f"[{idx}] README.md:\n{r.text[:3000]}")
+            refs.append(Reference(
+                file_path="README.md",
+                start_line=1,
+                end_line=min(100, r.text.count("\n") + 1),
+                url=f"https://github.com/{owner}/{repo}/blob/{branch}/README.md",
+            ))
     except Exception:
         pass
 
-    # 2. File tree — always available, gives language + structure signal
+    # [next] File tree
+    items: List[str] = []
     try:
         headers = {"Accept": "application/vnd.github.v3+json"}
         if GITHUB_TOKEN:
             headers["Authorization"] = f"token {GITHUB_TOKEN}"
-        branch = get_default_branch(owner, repo)
         tree_r = http_requests.get(
             f"https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1",
             headers=headers, timeout=10,
@@ -631,7 +646,6 @@ def _answer_from_context(owner: str, repo: str, question: str) -> QueryResponse:
         if tree_r.ok:
             items = [i["path"] for i in tree_r.json().get("tree", []) if i.get("type") == "blob"]
 
-            # Detect dominant languages from file extensions
             ext_to_lang = {
                 ".py": "Python", ".js": "JavaScript", ".ts": "TypeScript",
                 ".tsx": "TypeScript/React", ".jsx": "JavaScript/React",
@@ -652,43 +666,57 @@ def _answer_from_context(owner: str, repo: str, question: str) -> QueryResponse:
             top = sorted(ext_counts.items(), key=lambda x: -x[1])[:6]
             langs = [ext_to_lang.get(e, e.lstrip(".").upper()) for e, _ in top if e in ext_to_lang]
 
-            context_parts.append(
-                f"Repository: {owner}/{repo}\n"
+            idx = len(numbered_parts) + 1
+            numbered_parts.append(
+                f"[{idx}] Repository structure ({owner}/{repo}):\n"
                 f"Total files: {len(items)}\n"
                 f"Languages: {', '.join(langs) if langs else 'not detected'}\n"
                 f"File tree (first 60):\n" + "\n".join(items[:60])
             )
-
-            # 3. Fetch 1-2 small config files for framework/dependency info
-            config_priority = [
-                "package.json", "requirements.txt", "pyproject.toml",
-                "go.mod", "Cargo.toml", "pom.xml", "build.gradle",
-                "Gemfile", "composer.json", "setup.py",
-            ]
-            fetched = 0
-            for cfg in config_priority:
-                if fetched >= 2:
-                    break
-                matches = [p for p in items if os.path.basename(p) == cfg and p.count("/") <= 1]
-                if matches:
-                    try:
-                        cr = http_requests.get(
-                            f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{matches[0]}",
-                            timeout=6,
-                        )
-                        if cr.ok and len(cr.text) < 8000:
-                            context_parts.append(f"{matches[0]}:\n{cr.text[:2000]}")
-                            fetched += 1
-                    except Exception:
-                        pass
+            refs.append(Reference(
+                file_path=f"{owner}/{repo} (file tree)",
+                start_line=1,
+                end_line=1,
+                url=f"https://github.com/{owner}/{repo}",
+            ))
     except Exception:
         pass
 
-    if not context_parts:
-        context_parts.append(f"Repository: {owner}/{repo} — no additional information could be retrieved.")
+    # [next+] Config files
+    config_priority = [
+        "package.json", "requirements.txt", "pyproject.toml",
+        "go.mod", "Cargo.toml", "pom.xml", "build.gradle",
+        "Gemfile", "composer.json", "setup.py",
+    ]
+    fetched = 0
+    for cfg in config_priority:
+        if fetched >= 2:
+            break
+        matches = [p for p in items if os.path.basename(p) == cfg and p.count("/") <= 1]
+        if matches:
+            try:
+                cr = http_requests.get(
+                    f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{matches[0]}",
+                    timeout=6,
+                )
+                if cr.ok and len(cr.text) < 8000:
+                    idx = len(numbered_parts) + 1
+                    numbered_parts.append(f"[{idx}] {matches[0]}:\n{cr.text[:2000]}")
+                    refs.append(Reference(
+                        file_path=matches[0],
+                        start_line=1,
+                        end_line=min(80, cr.text.count("\n") + 1),
+                        url=f"https://github.com/{owner}/{repo}/blob/{branch}/{matches[0]}",
+                    ))
+                    fetched += 1
+            except Exception:
+                pass
 
-    answer = _call_llm(question, "\n\n---\n\n".join(context_parts))
-    return QueryResponse(answer=answer, references=[])
+    if not numbered_parts:
+        numbered_parts.append(f"Repository: {owner}/{repo} — no additional information could be retrieved.")
+
+    answer = _call_llm(question, "\n\n---\n\n".join(numbered_parts))
+    return QueryResponse(answer=answer, references=refs)
 
 
 def _call_llm(question: str, context: str) -> str:

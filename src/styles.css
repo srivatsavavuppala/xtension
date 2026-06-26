@@ -330,16 +330,18 @@ body.dark-theme #downloadBtn:hover:not(:disabled) {
   box-shadow: 0 6px 22px rgba(6,182,212,0.48);
 }
 
-/* Chat icon — sits beside download button in the row */
+/* Chat icon — absolute bottom-right in initial state; slotted into row after analysis */
 #chat-icon {
-  position: static;
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
   flex-shrink: 0;
   width: 46px;
   height: 46px;
   border-radius: 14px;
   background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
   box-shadow: 0 4px 16px rgba(79,70,229,0.4);
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
   padding: 0;

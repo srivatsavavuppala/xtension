@@ -288,20 +288,36 @@
 function showInteractiveButtons() {
   const downloadBtn = document.getElementById('downloadBtn');
   const chatIcon = document.getElementById('chat-icon');
+  const downloadArea = document.querySelector('.download-area');
   if (downloadBtn) {
     downloadBtn.style.visibility = 'visible';
     downloadBtn.style.pointerEvents = 'auto';
     downloadBtn.style.opacity = '1';
     downloadBtn.style.transform = 'translateY(0)';
   }
-  if (chatIcon) chatIcon.style.display = 'flex';
+  if (chatIcon && downloadArea) {
+    // Slot into the 90/10 download row
+    if (chatIcon.parentElement !== downloadArea) downloadArea.appendChild(chatIcon);
+    chatIcon.style.position = 'static';
+    chatIcon.style.bottom = '';
+    chatIcon.style.right = '';
+    chatIcon.style.display = 'flex';
+  }
 }
 
 function hideInteractiveButtons() {
   const downloadBtn = document.getElementById('downloadBtn');
   const chatIcon = document.getElementById('chat-icon');
+  const main = document.getElementById('main');
   if (downloadBtn) { downloadBtn.style.visibility = 'hidden'; downloadBtn.style.pointerEvents = 'none'; }
-  if (chatIcon) chatIcon.style.display = 'none';
+  if (chatIcon && main) {
+    // Float back to absolute bottom-right
+    if (chatIcon.parentElement !== main) main.appendChild(chatIcon);
+    chatIcon.style.position = 'absolute';
+    chatIcon.style.bottom = '20px';
+    chatIcon.style.right = '20px';
+    chatIcon.style.display = 'none';
+  }
 }
 
 function closeChatOverlay() {

@@ -740,7 +740,7 @@ def _call_llm(question: str, context: str) -> str:
                     "content": f"Context:\n\n{context}\n\nQuestion: {question}\n\nAnswer:",
                 },
             ],
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             temperature=0.2,
             stream=False,
         )
@@ -800,7 +800,7 @@ def summarize_repo(info: RepoInfo):
                 f"Architecture: {arch_ctx[:3000]}\nStructure: {struct_ctx[:2000]}\n\n"
                 "Be specific and technical. Focus on what it does, main technologies, and architecture."
             )}],
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             temperature=0.3,
             stream=False,
         ).choices[0].message.content
@@ -813,7 +813,7 @@ def summarize_repo(info: RepoInfo):
                 "Sections: Purpose, Technical Architecture, Key Technologies, Main Features, "
                 "File Structure, How to Run, Development Setup."
             )}],
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-120b",
             temperature=0.3,
             stream=False,
         ).choices[0].message.content
@@ -893,7 +893,7 @@ def _fallback_readme_summary(info: RepoInfo):
             f"Summarize {info.owner}/{info.repo}:\n"
             f"Description: {info.description}\nREADME: {readme[:2000]}"
         )}],
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         stream=False,
     ).choices[0].message.content
 
@@ -902,7 +902,7 @@ def _fallback_readme_summary(info: RepoInfo):
             f"Create a project overview for {info.owner}/{info.repo}:\n"
             f"Description: {info.description}\nREADME: {readme[:4000]}"
         )}],
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         stream=False,
     ).choices[0].message.content
 
